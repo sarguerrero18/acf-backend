@@ -60,7 +60,7 @@ export function generarActaComiteBaja(
       { titulo: 'Diagnostico', ancho: 90, valor: (f: ComiteBajaDetalleLinea) => f.diagnostico ?? '-' },
       { titulo: 'Decision', ancho: 55, valor: (f: ComiteBajaDetalleLinea) => f.decision },
       { titulo: 'Tipo egreso sugerido', ancho: 85, valor: (f: ComiteBajaDetalleLinea) => f.tipo_egreso_sugerido ?? '-' },
-      { titulo: 'No. Egreso', ancho: 42, align: 'right', valor: (f: ComiteBajaDetalleLinea) => f.numero_egreso != null ? String(f.numero_egreso) : '-' },
+      { titulo: 'No. Egreso', ancho: 42, align: 'center', valor: (f: ComiteBajaDetalleLinea) => f.numero_egreso != null ? String(f.numero_egreso) : '-' },
       { titulo: 'Observaciones', ancho: 110, valor: (f: ComiteBajaDetalleLinea) => f.observaciones ?? '-' },
     ], detalle);
 

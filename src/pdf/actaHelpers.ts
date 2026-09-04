@@ -12,6 +12,11 @@ import PDFDocument from 'pdfkit';
 
 export const MARGEN = 50;
 export const ANCHO_UTIL = 512; // LETTER (612pt) - 2*50
+// Espacio en blanco entre columnas de dibujarTabla -- sin esto, dos
+// columnas seguidas (ej. "No. Egreso" y "Observaciones") podian quedar
+// pegadas visualmente cuando el contenido de la primera llega justo al
+// borde de su ancho asignado.
+const PADDING_COL = 6;
 
 export function fmtValor(valor: number | null | undefined): string {
   if (valor === null || valor === undefined) return '-';
@@ -148,6 +153,7 @@ export interface DatosFirma {
   etiquetaRol: string; // "Quien entrega", "Contador", etc.
   nombre: string | null;
   identificacion?: string | null; // cedula (depreciacion) o vacio
+  matricula?: string | null; // tarjeta/matricula profesional (contador)
   dependencia?: string | null;
 }
 
@@ -177,6 +183,9 @@ export function dibujarBloqueFirmas(doc: PDFKit.PDFDocument, firmas: DatosFirma[
     if (firma.identificacion) {
       doc.text(`C.C. ${firma.identificacion}`, x + 10, doc.y, { width: anchoTexto, align: 'center' });
     }
+    if (firma.matricula) {
+      doc.text(`T.P. ${firma.matricula}`, x + 10, doc.y, { width: anchoTexto, align: 'center' });
+    }
     if (dependencia) {
       doc.text(dependencia, x + 10, doc.y, { width: anchoTexto, align: 'center' });
     }
@@ -201,7 +210,7 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
     let x = MARGEN;
     doc.font('Helvetica-Bold').fontSize(8);
     for (const col of columnas) {
-      doc.text(col.titulo, x, y, { width: col.ancho, align: col.align ?? 'left' });
+      doc.text(col.titulo, x, y, { width: col.ancho - PADDING_COL, align: col.align ?? 'left' });
       x += col.ancho;
     }
     doc.moveDown(0.3);
@@ -221,7 +230,7 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
     const y = doc.y;
     let x = MARGEN;
     for (const col of columnas) {
-      doc.text(col.valor(fila), x, y, { width: col.ancho, align: col.align ?? 'left' });
+      doc.text(col.valor(fila), x, y, { width: col.ancho - PADDING_COL, align: col.align ?? 'left' });
       x += col.ancho;
     }
     doc.moveDown(0.4);

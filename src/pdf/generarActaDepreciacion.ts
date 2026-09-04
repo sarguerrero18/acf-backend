@@ -66,6 +66,7 @@ export function generarActaDepreciacion(
           etiquetaRol: ROL_LABEL[f.rol],
           nombre: f.nombre_firmante,
           identificacion: f.cedula,
+          matricula: f.matricula_profesional,
         }))
       : [
           { etiquetaRol: 'Contador', nombre: null },
