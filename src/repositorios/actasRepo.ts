@@ -134,11 +134,46 @@ export interface DepreciacionDetalleLinea {
 }
 
 export interface Firmante {
-  rol: 'CONTADOR' | 'ALMACENISTA';
+  // 'OTRO' se agrego para comite-firmantes -- el check constraint de
+  // ACF_FIRMANTE.ROL permite CONTADOR/ALMACENISTA/OTRO, y a diferencia
+  // de Depreciacion, el comite de bajas no restringe por rol.
+  rol: 'CONTADOR' | 'ALMACENISTA' | 'OTRO';
   cedula: string;
   matricula_profesional: string | null;
   orden_firma: number;
   nombre_firmante: string | null;
+}
+
+export interface ComiteBajaCabecera extends EntidadInfo {
+  id: number;
+  vigencia: number;
+  consecutivo: number;
+  numero_acta: string | null;
+  fecha_comite: string;
+  // ACF_COMITE_BAJA.ESTADO solo permite ELABORADO/APROBADO (sin
+  // ANULADO, a diferencia de las otras 4 actas) -- DDL real confirmada
+  // por Sergio.
+  estado: 'ELABORADO' | 'APROBADO';
+  observaciones: string | null;
+  // Agregadas por Sergio al DDL original de ACF_COMITE_BAJA (que no
+  // las traia) -- FECHA_COMITE es el dia real del comite,
+  // FECHA_APROBACION es el tramite administrativo y puede ser
+  // posterior (validado en PR_APROBAR_COMITE_BAJA, no aca). El acta
+  // muestra ambas fechas por separado.
+  fecha_aprobacion: string | null;
+  usuario_aprobacion: string | null;
+  fecha_creacion: string | null;
+  fecha_modificacion: string | null;
+}
+
+export interface ComiteBajaDetalleLinea {
+  numero_placa: number;
+  descripcion: string;
+  diagnostico: string | null;
+  decision: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO' | 'APLAZADO' | 'ANULADO';
+  tipo_egreso_sugerido: string | null;
+  numero_egreso: number | null;
+  observaciones: string | null;
 }
 
 async function unico<T>(path: string, params: Record<string, string>, contexto: string): Promise<T> {
@@ -192,6 +227,22 @@ export async function buscarDepreciacion(id: string): Promise<{
     ordsGetCollection<DepreciacionDetalleLinea>('/depreciacion-detalle', { id }),
   ]);
   const firmantes = await ordsGetCollection<Firmante>('/depreciacion-firmantes', {
+    clienteId: String(cabecera.cliente_id),
+    entidadId: String(cabecera.entidad_id),
+  });
+  return { cabecera, detalle, firmantes };
+}
+
+export async function buscarComiteBaja(id: string): Promise<{
+  cabecera: ComiteBajaCabecera;
+  detalle: ComiteBajaDetalleLinea[];
+  firmantes: Firmante[];
+}> {
+  const [cabecera, detalle] = await Promise.all([
+    unico<ComiteBajaCabecera>('/comite-cabecera', { id }, 'Acta de Comite de Bajas'),
+    ordsGetCollection<ComiteBajaDetalleLinea>('/comite-detalle', { id }),
+  ]);
+  const firmantes = await ordsGetCollection<Firmante>('/comite-firmantes', {
     clienteId: String(cabecera.cliente_id),
     entidadId: String(cabecera.entidad_id),
   });

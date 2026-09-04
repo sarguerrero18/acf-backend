@@ -19,6 +19,11 @@ const MESES = [
 const ROL_LABEL: Record<Firmante['rol'], string> = {
   CONTADOR: 'Contador',
   ALMACENISTA: 'Almacenista',
+  // 'OTRO' se agrego al tipo Firmante['rol'] para comite-firmantes --
+  // Depreciacion sigue restringiendo a CONTADOR/ALMACENISTA en su
+  // propio query (depreciacion-firmantes), pero el tipo TS es
+  // compartido, asi que hay que cubrir el caso igual.
+  OTRO: 'Miembro del comite',
 };
 
 export function generarActaDepreciacion(

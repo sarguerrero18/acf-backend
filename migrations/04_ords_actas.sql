@@ -75,6 +75,29 @@
 -- datos donde se sabe que deberia ser lo contrario, revisar este
 -- supuesto primero.
 --
+-- SEXTA ADICION: acta de Comite de Bajas (2026-09-04). DDL real
+-- compartida por Sergio para ACF_COMITE_BAJA (ID/CLIENTE_ID/ENTIDAD_ID/
+-- VIGENCIA/CONSECUTIVO/NUMERO_ACTA/FECHA_COMITE/ESTADO IN
+-- ('ELABORADO','APROBADO') -- OJO, sin ANULADO, a diferencia de las
+-- otras 4 actas). CORRECCION del mismo dia: la version inicial de
+-- ACF_COMITE_BAJA no tenia FECHA_APROBACION/USUARIO_APROBACION --
+-- Sergio las agrego (con la validacion FECHA_APROBACION >=
+-- FECHA_COMITE resuelta en PR_APROBAR_COMITE_BAJA, no en este query) y
+-- ahora comite-cabecera las selecciona igual que las otras 4 actas.
+-- FECHA_COMITE (el dia real del comite) y FECHA_APROBACION (el tramite,
+-- que puede ser posterior) se muestran ambas en el acta.
+--
+-- ACF_COMITE_BAJA_DETALLE (COMITE_BAJA_ID/ACTIVO_FIJO_ID/DIAGNOSTICO/
+-- TIPO_EGRESO_SUGERIDO_ID -> FK a ACF_TIPO_MOVIMIENTO/DECISION/
+-- EGRESO_ID -> FK a ACF_EGRESO, nullable hasta que se ejecute la
+-- decision/OBSERVACIONES). Firmantes: ACF_FIRMANTE.TIPO_DOCUMENTO =
+-- 'COMITE_BAJA' ya existia como valor permitido y ya tiene datos reales
+-- (ALMACENISTA orden 1 + CONTADOR orden 2, mismo patron que
+-- Depreciacion) -- a diferencia de depreciacion-firmantes, comite-
+-- firmantes NO restringe por ROL (el check constraint de ACF_FIRMANTE
+-- permite tambien 'OTRO', pensado para mas miembros de comite a
+-- futuro).
+--
 -- *** SUPUESTO A VALIDAR restante (probar con datos reales y corregir
 -- si hace falta):
 --
@@ -412,6 +435,84 @@ BEGIN
         AND F.TIPO_DOCUMENTO = 'DEPRECIACION'
         AND F.ESTADO = 'ACTIVO'
         AND F.ROL IN ('CONTADOR','ALMACENISTA')
+      ORDER BY F.ORDEN_FIRMA
+    ]'
+  );
+
+  ------------------------------------------------------------
+  -- COMITE DE BAJAS (firmantes: mismo patron que Depreciacion via
+  -- ACF_FIRMANTE, TIPO_DOCUMENTO='COMITE_BAJA', sin restringir ROL)
+  ------------------------------------------------------------
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'comite-cabecera');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'comite-cabecera',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        CB.ID AS id, CB.CLIENTE_ID AS cliente_id, CB.ENTIDAD_ID AS entidad_id,
+        CB.VIGENCIA AS vigencia, CB.CONSECUTIVO AS consecutivo,
+        CB.NUMERO_ACTA AS numero_acta, CB.FECHA_COMITE AS fecha_comite,
+        CB.ESTADO AS estado, CB.OBSERVACIONES AS observaciones,
+        CB.FECHA_APROBACION AS fecha_aprobacion, CB.USUARIO_APROBACION AS usuario_aprobacion,
+        CB.FECHA_CREACION AS fecha_creacion, CB.FECHA_MODIFICACION AS fecha_modificacion,
+        PK_GENERAL.fn_nombre_cliente(CB.CLIENTE_ID) AS nombre_cliente,
+        PK_GENERAL.fn_nombre_entidad(CB.ENTIDAD_ID) AS nombre_entidad,
+        GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
+        GE.LOGO_FILENAME AS logo_filename
+      FROM ACF_COMITE_BAJA CB
+      JOIN GEN_ENTIDAD GE ON GE.ID = CB.ENTIDAD_ID
+      WHERE CB.ID = :id
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'comite-detalle');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'comite-detalle',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        AF.NUMERO_PLACA AS numero_placa, C.DESCRIPCION AS descripcion,
+        CBD.DIAGNOSTICO AS diagnostico, CBD.DECISION AS decision,
+        TM2.DESC_TIPO_MOVIMIENTO AS tipo_egreso_sugerido,
+        EG.CONSECUTIVO AS numero_egreso,
+        CBD.OBSERVACIONES AS observaciones
+      FROM ACF_COMITE_BAJA_DETALLE CBD
+      JOIN ACF_ACTIVOS_FIJOS AF ON AF.ID = CBD.ACTIVO_FIJO_ID
+      JOIN ACF_CATALOGO C       ON C.ID = AF.CATALOGO_ID
+      LEFT JOIN ACF_TIPO_MOVIMIENTO TM2 ON TM2.ID = CBD.TIPO_EGRESO_SUGERIDO_ID
+      LEFT JOIN ACF_EGRESO EG           ON EG.ID = CBD.EGRESO_ID
+      WHERE CBD.COMITE_BAJA_ID = :id
+      ORDER BY AF.NUMERO_PLACA
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'comite-firmantes');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'comite-firmantes',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        F.ROL AS rol, F.CEDULA AS cedula,
+        F.MATRICULA_PROFESIONAL AS matricula_profesional, F.ORDEN_FIRMA AS orden_firma,
+        PK_GENERAL.fn_nombre_tercero(GF.FUNCIONARIO_ID) AS nombre_firmante
+      FROM ACF_FIRMANTE F
+      LEFT JOIN GTH_FUNCIONARIOS GF ON GF.ID = F.FUNCIONARIO_ID
+      WHERE F.CLIENTE_ID = :clienteId
+        AND F.ENTIDAD_ID = :entidadId
+        AND F.TIPO_DOCUMENTO = 'COMITE_BAJA'
+        AND F.ESTADO = 'ACTIVO'
       ORDER BY F.ORDEN_FIRMA
     ]'
   );
