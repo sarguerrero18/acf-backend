@@ -69,6 +69,7 @@ export function generarActaComiteBaja(
           etiquetaRol: ROL_LABEL[f.rol] ?? f.rol,
           nombre: nombreValido(f.nombre_firmante),
           identificacion: f.cedula,
+          matricula: f.matricula_profesional,
         }))
       : [
           { etiquetaRol: 'Almacenista', nombre: null },

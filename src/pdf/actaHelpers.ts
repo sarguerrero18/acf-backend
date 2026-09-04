@@ -205,15 +205,35 @@ export interface ColumnaTabla<T> {
  * criterio manual de columnas fijas ya usado en generarComprobantePdf.ts.
  */
 export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<T>[], filas: T[]): void {
+  // doc.text() con x/y explicitos NO actualiza doc.y en funcion de la
+  // columna mas alta -- lo deja en donde termino la ULTIMA columna
+  // escrita. Si una columna anterior se envuelve a 2-3 lineas (ej.
+  // "Tipo egreso sugerido" o "No. Egreso" en un ancho angosto) pero la
+  // ultima columna de la fila es de una sola linea, doc.moveDown()
+  // avanzaba muy poco y la linea separadora (o la fila siguiente)
+  // quedaba montada sobre el texto envuelto. Se mide la altura real de
+  // cada columna con doc.heightOfString() (requiere el font/fontSize ya
+  // aplicado) y se usa la mas alta para avanzar el cursor.
+  const alturaFila = (textos: string[]): number => {
+    let maxAltura = 0;
+    columnas.forEach((col, i) => {
+      const h = doc.heightOfString(textos[i], { width: col.ancho - PADDING_COL });
+      if (h > maxAltura) maxAltura = h;
+    });
+    return maxAltura;
+  };
+
   const dibujarEncabezadoTabla = () => {
     const y = doc.y;
     let x = MARGEN;
     doc.font('Helvetica-Bold').fontSize(8);
+    const titulos = columnas.map((col) => col.titulo);
+    const altura = alturaFila(titulos);
     for (const col of columnas) {
       doc.text(col.titulo, x, y, { width: col.ancho - PADDING_COL, align: col.align ?? 'left' });
       x += col.ancho;
     }
-    doc.moveDown(0.3);
+    doc.y = y + altura + 3;
     doc.moveTo(MARGEN, doc.y).lineTo(MARGEN + ANCHO_UTIL, doc.y).stroke();
     doc.moveDown(0.2);
   };
@@ -229,11 +249,13 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
     }
     const y = doc.y;
     let x = MARGEN;
+    const valores = columnas.map((col) => col.valor(fila));
+    const altura = alturaFila(valores);
     for (const col of columnas) {
       doc.text(col.valor(fila), x, y, { width: col.ancho - PADDING_COL, align: col.align ?? 'left' });
       x += col.ancho;
     }
-    doc.moveDown(0.4);
+    doc.y = y + altura + 4;
   }
 }
 
