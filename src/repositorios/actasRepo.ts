@@ -52,7 +52,12 @@ export interface IngresoCabecera extends EntidadInfo {
 
 export interface ActivoDetalleLinea {
   activo_fijo_id: number;
-  numero_placa: number;
+  // Nullable porque ingreso-detalle puede traer filas de
+  // ACF_DETALLE_INGRESO (ingreso en ELABORADO, activo fijo real
+  // todavia no creado) donde NUMERO_PLACA aun no esta asignado. En
+  // Traslado/Egreso siempre viene poblado (solo se puede mover/dar de
+  // baja un activo que YA existe con placa real).
+  numero_placa: number | null;
   descripcion: string;
   marca: string | null;
   referencia: string | null;

@@ -45,7 +45,7 @@ export function generarActaIngreso(
     doc.moveDown(0.8);
 
     dibujarTabla(doc, [
-      { titulo: 'Placa', ancho: 45, valor: (f: ActivoDetalleLinea) => String(f.numero_placa) },
+      { titulo: 'Placa', ancho: 45, valor: (f: ActivoDetalleLinea) => f.numero_placa != null ? String(f.numero_placa) : '-' },
       { titulo: 'Descripcion', ancho: 175, valor: (f: ActivoDetalleLinea) => f.descripcion },
       { titulo: 'Marca/Modelo', ancho: 110, valor: (f: ActivoDetalleLinea) => [f.marca, f.modelo].filter(Boolean).join(' / ') || '-' },
       { titulo: 'Serial', ancho: 90, valor: (f: ActivoDetalleLinea) => f.serial ?? '-' },

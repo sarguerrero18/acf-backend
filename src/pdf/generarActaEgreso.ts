@@ -40,7 +40,7 @@ export function generarActaEgreso(
     doc.moveDown(0.8);
 
     dibujarTabla(doc, [
-      { titulo: 'Placa', ancho: 45, valor: (f: ActivoDetalleLinea) => String(f.numero_placa) },
+      { titulo: 'Placa', ancho: 45, valor: (f: ActivoDetalleLinea) => f.numero_placa != null ? String(f.numero_placa) : '-' },
       { titulo: 'Descripcion', ancho: 195, valor: (f: ActivoDetalleLinea) => f.descripcion },
       { titulo: 'Marca/Modelo', ancho: 120, valor: (f: ActivoDetalleLinea) => [f.marca, f.modelo].filter(Boolean).join(' / ') || '-' },
       { titulo: 'Valor', ancho: 76, align: 'right', valor: (f: ActivoDetalleLinea) => `$${fmtValor(f.valor)}` },

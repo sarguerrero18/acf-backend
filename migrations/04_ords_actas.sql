@@ -75,6 +75,33 @@
 -- datos donde se sabe que deberia ser lo contrario, revisar este
 -- supuesto primero.
 --
+-- SEPTIMA CORRECCION: ingreso-detalle salia vacio para ingresos en
+-- ESTADO=ELABORADO (probado con Ingreso No. 10, id=82 -- ORDS devolvia
+-- {"items":[]}). Causa: la query solo consultaba ACF_ACTIVOS_FIJOS
+-- WHERE INGRESO_ID=:id, pero esos registros NO existen todavia
+-- mientras el ingreso esta en ELABORADO -- Sergio confirmo que el
+-- detalle real, mientras tanto, vive en ACF_DETALLE_INGRESO (columnas
+-- CATALOGO_ID/MARCA/REFERENCIA/MODELO/SERIAL/VALOR/VALOR_IVA/
+-- VALOR_TOTAL/NUMERO_PLACA -- este ultimo nulo hasta la aprobacion).
+-- Al aprobar el ingreso, se crean los registros definitivos en
+-- ACF_ACTIVOS_FIJOS A PARTIR de ACF_DETALLE_INGRESO, y el
+-- NUMERO_PLACA de ACF_DETALLE_INGRESO se actualiza solo a nivel
+-- informativo (consultas/historial) -- ACF_ACTIVOS_FIJOS queda como
+-- la fuente autoritativa una vez existe (puede tener correcciones
+-- posteriores). Fix: ingreso-detalle ahora es un UNION ALL -- usa
+-- ACF_ACTIVOS_FIJOS si ya hay filas para ese ingreso (caso normal,
+-- APROBADO), y si no hay ninguna, cae a ACF_DETALLE_INGRESO (caso
+-- ELABORADO). NUMERO_PLACA puede salir NULL en el segundo caso (se
+-- ordena con NULLS LAST).
+--
+-- Traslado y Egreso NO deberian tener este problema -- a diferencia
+-- de Ingreso, solo se puede trasladar/egresar un activo que YA EXISTE
+-- en ACF_ACTIVOS_FIJOS (con placa real), asi que ACF_DETALLE_TRASLADO/
+-- ACF_DETALLE_EGRESO siempre apuntan a un activo fijo real sin
+-- importar el estado del movimiento. No confirmado explicitamente por
+-- Sergio (dijo que no habia revisado los otros tipos todavia) -- si
+-- aparece el mismo sintoma alli, avisar para aplicar el mismo patron.
+--
 -- SEXTA ADICION: acta de Comite de Bajas (2026-09-04). DDL real
 -- compartida por Sergio para ACF_COMITE_BAJA (ID/CLIENTE_ID/ENTIDAD_ID/
 -- VIGENCIA/CONSECUTIVO/NUMERO_ACTA/FECHA_COMITE/ESTADO IN
@@ -208,16 +235,29 @@ BEGIN
     p_source_type    => ORDS.source_type_query,
     p_items_per_page => 0,
     p_source         => q'[
-      SELECT
-        AF.ID AS activo_fijo_id, AF.NUMERO_PLACA AS numero_placa,
-        C.DESCRIPCION AS descripcion,
-        AF.MARCA AS marca, AF.REFERENCIA AS referencia, AF.MODELO AS modelo,
-        AF.SERIAL AS serial, AF.ESTADO AS estado,
-        AF.VALOR AS valor, AF.VALOR_IVA AS valor_iva, AF.VALOR_TOTAL AS valor_total
-      FROM ACF_ACTIVOS_FIJOS AF
-      JOIN ACF_CATALOGO C ON C.ID = AF.CATALOGO_ID
-      WHERE AF.INGRESO_ID = :id
-      ORDER BY AF.NUMERO_PLACA
+      SELECT * FROM (
+        SELECT
+          AF.ID AS activo_fijo_id, AF.NUMERO_PLACA AS numero_placa,
+          C.DESCRIPCION AS descripcion,
+          AF.MARCA AS marca, AF.REFERENCIA AS referencia, AF.MODELO AS modelo,
+          AF.SERIAL AS serial, AF.ESTADO AS estado,
+          AF.VALOR AS valor, AF.VALOR_IVA AS valor_iva, AF.VALOR_TOTAL AS valor_total
+        FROM ACF_ACTIVOS_FIJOS AF
+        JOIN ACF_CATALOGO C ON C.ID = AF.CATALOGO_ID
+        WHERE AF.INGRESO_ID = :id
+        UNION ALL
+        SELECT
+          DI.ID AS activo_fijo_id, DI.NUMERO_PLACA AS numero_placa,
+          C2.DESCRIPCION AS descripcion,
+          DI.MARCA AS marca, DI.REFERENCIA AS referencia, DI.MODELO AS modelo,
+          DI.SERIAL AS serial, CAST(NULL AS VARCHAR2(30)) AS estado,
+          DI.VALOR AS valor, DI.VALOR_IVA AS valor_iva, DI.VALOR_TOTAL AS valor_total
+        FROM ACF_DETALLE_INGRESO DI
+        JOIN ACF_CATALOGO C2 ON C2.ID = DI.CATALOGO_ID
+        WHERE DI.INGRESO_ID = :id
+          AND NOT EXISTS (SELECT 1 FROM ACF_ACTIVOS_FIJOS AF2 WHERE AF2.INGRESO_ID = DI.INGRESO_ID)
+      )
+      ORDER BY numero_placa NULLS LAST, activo_fijo_id
     ]'
   );
 
