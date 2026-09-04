@@ -48,7 +48,11 @@ export function generarActaEgreso(
     ], detalle);
 
     dibujarBloqueFirmas(doc, [
-      { etiquetaRol: 'Responsable del egreso', nombre: cabecera.nombre_responsable, identificacion: undefined },
+      {
+        etiquetaRol: 'Responsable del egreso' + (cabecera.es_almacenista_responsable ? ' (almacenista)' : ''),
+        nombre: cabecera.nombre_responsable,
+        identificacion: undefined,
+      },
     ]);
 
     dibujarPie(doc, usuarioImprime);

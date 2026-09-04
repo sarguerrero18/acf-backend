@@ -53,8 +53,16 @@ export function generarActaIngreso(
     ], detalle);
 
     dibujarBloqueFirmas(doc, [
-      { etiquetaRol: 'Entrega (almacenista)', nombre: cabecera.nombre_entrega, dependencia: cabecera.nombre_dep_entrega },
-      { etiquetaRol: 'Recibe', nombre: cabecera.nombre_recibe, dependencia: cabecera.nombre_dep_recibe },
+      {
+        etiquetaRol: 'Entrega' + (cabecera.es_almacenista_entrega ? ' (almacenista)' : ''),
+        nombre: cabecera.nombre_entrega,
+        dependencia: cabecera.nombre_dep_entrega,
+      },
+      {
+        etiquetaRol: 'Recibe' + (cabecera.es_almacenista_recibe ? ' (almacenista)' : ''),
+        nombre: cabecera.nombre_recibe,
+        dependencia: cabecera.nombre_dep_recibe,
+      },
     ]);
 
     dibujarPie(doc, usuarioImprime);

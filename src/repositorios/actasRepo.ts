@@ -39,9 +39,15 @@ export interface IngresoCabecera extends EntidadInfo {
   funcionario_entrega_id: number | null;
   nombre_entrega: string | null;
   nombre_dep_entrega: string | null;
+  // ORDS serializa CASE WHEN ... THEN 1 ELSE 0 END como numero (0/1),
+  // no como boolean JSON -- se usa directo en condicionales (0 es
+  // falsy, 1 es truthy en JS/TS). Ver migrations/04_ords_actas.sql,
+  // QUINTA CORRECCION.
+  es_almacenista_entrega: number;
   funcionario_recibe_id: number | null;
   nombre_recibe: string | null;
   nombre_dep_recibe: string | null;
+  es_almacenista_recibe: number;
 }
 
 export interface ActivoDetalleLinea {
@@ -74,10 +80,12 @@ export interface TrasladoCabecera extends EntidadInfo {
   funcionario_origen_id: number | null;
   nombre_origen: string | null;
   nombre_dep_origen: string | null;
+  es_almacenista_origen: number;
   ubicacion_destino: string;
   funcionario_destino_id: number | null;
   nombre_destino: string | null;
   nombre_dep_destino: string | null;
+  es_almacenista_destino: number;
   nombre_tercero_comodato: string | null;
 }
 
@@ -95,6 +103,7 @@ export interface EgresoCabecera extends EntidadInfo {
   desc_tipo_movimiento: string;
   responsable_id: number | null;
   nombre_responsable: string | null;
+  es_almacenista_responsable: number;
 }
 
 export interface DepreciacionCabecera extends EntidadInfo {

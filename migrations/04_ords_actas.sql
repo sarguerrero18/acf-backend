@@ -52,6 +52,29 @@
 -- VIDA_UTIL_ACTUAL, DIAS_DEPRECIADOS, VIDA_UTIL_NUEVA,
 -- VALOR_ANTES_DEPRECIACION, VALOR_DEPRECIADO, VALOR_NUEVO_BIEN.
 --
+-- QUINTA CORRECCION: etiqueta "(almacenista)" en las firmas de Ingreso
+-- estaba HARDCODEADA siempre sobre el rol "Entrega" (generarActaIngreso.ts),
+-- sin verificar nada -- Sergio detecto que en la practica el almacenista
+-- suele ser quien RECIBE (bodega), no quien entrega, asi que la etiqueta
+-- salia en la persona equivocada. Se corrigio para que sea dinamico,
+-- consultando ACF_ALMACENISTA (DDL real compartido por Sergio:
+-- ID/CLIENTE_ID/ENTIDAD_ID/FUNCIONARIO_ID/FECHA_INICIAL/FECHA_FINAL/
+-- ESTADO). Se agrego un flag es_almacenista_<rol> (0/1) a
+-- ingreso-cabecera, traslado-cabecera y egreso-cabecera, via EXISTS
+-- contra ACF_ALMACENISTA con ESTADO='ACTIVO', y el generador de PDF
+-- decide la etiqueta segun ese flag en vez de hardcodearla.
+--
+-- *** SUPUESTO A VALIDAR: se asume que ACF_ALMACENISTA.FUNCIONARIO_ID
+-- guarda GTH_FUNCIONARIOS.ID (igual patron que TODAS las demas columnas
+-- FUNCIONARIO_ID de este modulo: ACF_INGRESO, ACF_TRASLADO, ACF_EGRESO,
+-- ACF_FIRMANTE) -- por eso se compara directo contra la columna FK
+-- (I.FUNCIONARIO_ENTREGA_ID, etc.), SIN pasar por el join intermedio a
+-- GTH_FUNCIONARIOS.FUNCIONARIO_ID que si hace falta para resolver el
+-- NOMBRE. No confirmado explicitamente por Sergio para esta tabla en
+-- particular -- si el flag sale siempre en 0 (o siempre en 1) contra
+-- datos donde se sabe que deberia ser lo contrario, revisar este
+-- supuesto primero.
+--
 -- *** SUPUESTO A VALIDAR restante (probar con datos reales y corregir
 -- si hace falta):
 --
@@ -129,9 +152,21 @@ BEGIN
         I.FUNCIONARIO_ENTREGA_ID AS funcionario_entrega_id,
         PK_GENERAL.fn_nombre_tercero(GF_ENTREGA.FUNCIONARIO_ID) AS nombre_entrega,
         PK_GENERAL.fn_nombre_dependencia(I.DEPENDENCIA_ENTREGA_ID) AS nombre_dep_entrega,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM ACF_ALMACENISTA ALM
+          WHERE ALM.FUNCIONARIO_ID = I.FUNCIONARIO_ENTREGA_ID
+            AND ALM.CLIENTE_ID = I.CLIENTE_ID AND ALM.ENTIDAD_ID = I.ENTIDAD_ID
+            AND ALM.ESTADO = 'ACTIVO'
+        ) THEN 1 ELSE 0 END AS es_almacenista_entrega,
         I.FUNCIONARIO_RECIBE_ID AS funcionario_recibe_id,
         PK_GENERAL.fn_nombre_tercero(GF_RECIBE.FUNCIONARIO_ID) AS nombre_recibe,
-        PK_GENERAL.fn_nombre_dependencia(I.DEPENDENCIA_RECIBE_ID) AS nombre_dep_recibe
+        PK_GENERAL.fn_nombre_dependencia(I.DEPENDENCIA_RECIBE_ID) AS nombre_dep_recibe,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM ACF_ALMACENISTA ALM
+          WHERE ALM.FUNCIONARIO_ID = I.FUNCIONARIO_RECIBE_ID
+            AND ALM.CLIENTE_ID = I.CLIENTE_ID AND ALM.ENTIDAD_ID = I.ENTIDAD_ID
+            AND ALM.ESTADO = 'ACTIVO'
+        ) THEN 1 ELSE 0 END AS es_almacenista_recibe
       FROM ACF_INGRESO I
       JOIN ACF_TIPO_MOVIMIENTO TM ON TM.ID = I.TIPO_INGRESO_ID
       JOIN GEN_ENTIDAD GE      ON GE.ID = I.ENTIDAD_ID
@@ -190,9 +225,21 @@ BEGIN
         T.UBICACION_ORIGEN AS ubicacion_origen, T.FUNCIONARIO_ORIGEN_ID AS funcionario_origen_id,
         PK_GENERAL.fn_nombre_tercero(GF_ORIGEN.FUNCIONARIO_ID) AS nombre_origen,
         PK_GENERAL.fn_nombre_dependencia(T.DEPENDENCIA_ORIGEN_ID) AS nombre_dep_origen,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM ACF_ALMACENISTA ALM
+          WHERE ALM.FUNCIONARIO_ID = T.FUNCIONARIO_ORIGEN_ID
+            AND ALM.CLIENTE_ID = T.CLIENTE_ID AND ALM.ENTIDAD_ID = T.ENTIDAD_ID
+            AND ALM.ESTADO = 'ACTIVO'
+        ) THEN 1 ELSE 0 END AS es_almacenista_origen,
         T.UBICACION_DESTINO AS ubicacion_destino, T.FUNCIONARIO_DESTINO_ID AS funcionario_destino_id,
         PK_GENERAL.fn_nombre_tercero(GF_DESTINO.FUNCIONARIO_ID) AS nombre_destino,
         PK_GENERAL.fn_nombre_dependencia(T.DEPENDENCIA_DESTINO_ID) AS nombre_dep_destino,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM ACF_ALMACENISTA ALM
+          WHERE ALM.FUNCIONARIO_ID = T.FUNCIONARIO_DESTINO_ID
+            AND ALM.CLIENTE_ID = T.CLIENTE_ID AND ALM.ENTIDAD_ID = T.ENTIDAD_ID
+            AND ALM.ESTADO = 'ACTIVO'
+        ) THEN 1 ELSE 0 END AS es_almacenista_destino,
         PK_GENERAL.fn_nombre_tercero(T.TERCERO_ID) AS nombre_tercero_comodato
       FROM ACF_TRASLADO T
       JOIN ACF_TIPO_MOVIMIENTO TM ON TM.ID = T.TIPO_TRASLADO_ID
@@ -250,7 +297,13 @@ BEGIN
         GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
         GE.LOGO_FILENAME AS logo_filename,
         E.RESPONSABLE_ID AS responsable_id,
-        PK_GENERAL.fn_nombre_tercero(GF_RESP.FUNCIONARIO_ID) AS nombre_responsable
+        PK_GENERAL.fn_nombre_tercero(GF_RESP.FUNCIONARIO_ID) AS nombre_responsable,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM ACF_ALMACENISTA ALM
+          WHERE ALM.FUNCIONARIO_ID = E.RESPONSABLE_ID
+            AND ALM.CLIENTE_ID = E.CLIENTE_ID AND ALM.ENTIDAD_ID = E.ENTIDAD_ID
+            AND ALM.ESTADO = 'ACTIVO'
+        ) THEN 1 ELSE 0 END AS es_almacenista_responsable
       FROM ACF_EGRESO E
       JOIN ACF_TIPO_MOVIMIENTO TM ON TM.ID = E.TIPO_EGRESO_ID
       JOIN GEN_ENTIDAD GE         ON GE.ID = E.ENTIDAD_ID

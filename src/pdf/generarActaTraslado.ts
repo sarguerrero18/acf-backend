@@ -52,8 +52,16 @@ export function generarActaTraslado(
     ], detalle);
 
     dibujarBloqueFirmas(doc, [
-      { etiquetaRol: 'Entrega (origen)', nombre: cabecera.nombre_origen, dependencia: cabecera.nombre_dep_origen },
-      { etiquetaRol: 'Recibe (destino)', nombre: cabecera.nombre_destino, dependencia: cabecera.nombre_dep_destino },
+      {
+        etiquetaRol: 'Entrega (origen)' + (cabecera.es_almacenista_origen ? ' - Almacenista' : ''),
+        nombre: cabecera.nombre_origen,
+        dependencia: cabecera.nombre_dep_origen,
+      },
+      {
+        etiquetaRol: 'Recibe (destino)' + (cabecera.es_almacenista_destino ? ' - Almacenista' : ''),
+        nombre: cabecera.nombre_destino,
+        dependencia: cabecera.nombre_dep_destino,
+      },
     ]);
 
     dibujarPie(doc, usuarioImprime);

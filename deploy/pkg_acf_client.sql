@@ -20,15 +20,16 @@
 -- *** SUPUESTO A VALIDAR: la URL del endpoint de token asume que ACF
 -- vive en la MISMA Autonomous Database que GTH (mismo host que ya usa
 -- pkg_nomina_client.sql), solo cambiando /ords/gth/ por /ords/acf/.
--- Confirmar y ajustar si no es el caso. La URL de url_backend() es
--- PLACEHOLDER hasta que acf-backend tenga su propio deploy (Render u
--- otro) -- ajustar cuando exista.
+-- Confirmar y ajustar si no es el caso.
+--
+-- url_backend() ya NO es placeholder -- acf-backend quedo desplegado
+-- en Render en https://acf-backend-xwrq.onrender.com (2026-09-03).
 -- ============================================================
 
 CREATE OR REPLACE PACKAGE pkg_acf_client AS
 
-  /** URL base del backend Node de ACF (acf-backend) una vez desplegado.
-   *  PLACEHOLDER -- reemplazar cuando exista el deploy real. */
+  /** URL base del backend Node de ACF (acf-backend), desplegado en
+   *  Render. */
   FUNCTION url_backend RETURN VARCHAR2;
 
   /** Devuelve 'Bearer <token>' listo para usar como header Authorization.
@@ -54,7 +55,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_acf_client AS
 
   FUNCTION url_backend RETURN VARCHAR2 IS
   BEGIN
-    RETURN 'https://PENDIENTE-deploy-acf-backend.onrender.com'; -- *** ajustar al desplegar
+    RETURN 'https://acf-backend-xwrq.onrender.com';
   END url_backend;
 
   FUNCTION obtener_bearer_header RETURN VARCHAR2 IS
@@ -68,6 +69,16 @@ CREATE OR REPLACE PACKAGE BODY pkg_acf_client AS
     APEX_WEB_SERVICE.G_REQUEST_HEADERS(1).NAME  := 'Content-Type';
     APEX_WEB_SERVICE.G_REQUEST_HEADERS(1).VALUE := 'application/x-www-form-urlencoded';
 
+    -- ATENCION: p_credential_static_id busca por el campo "Static ID"
+    -- del Web Credential (Workspace Utilities > Web Credentials), NO
+    -- por el campo "Name" que se ve en la lista -- son campos distintos
+    -- y el lookup es sensible a mayusculas/minusculas. CONFIRMADO por
+    -- captura de pantalla de Sergio (2026-09-03, segunda verificacion):
+    -- el Static ID real es 'ACF_APEX_OAUTH2' (mayusculas, igual al
+    -- Name) -- hubo una version intermedia en minusculas que ya no
+    -- aplica. Si en algun momento se re-crea el credential, verificar
+    -- el Static ID real en pantalla antes de asumir que coincide con
+    -- lo que hay aca.
     l_resp := APEX_WEB_SERVICE.MAKE_REST_REQUEST(
       p_url                  => 'https://g12b41f87b2bc76-apcdb.adb.sa-bogota-1.oraclecloudapps.com/ords/acf/oauth/token',
       p_http_method          => 'POST',
@@ -91,10 +102,24 @@ CREATE OR REPLACE PACKAGE BODY pkg_acf_client AS
 
   FUNCTION descargar_acta(p_ruta VARCHAR2) RETURN BLOB IS
     l_blob BLOB;
+    l_auth VARCHAR2(2000);
   BEGIN
+    -- Resolver el token ANTES de tocar G_REQUEST_HEADERS. G_REQUEST_
+    -- HEADERS es un array GLOBAL de APEX_WEB_SERVICE (no privado de
+    -- esta funcion) -- si se arma la asignacion en dos pasos (NAME
+    -- primero, VALUE := obtener_bearer_header despues) y el token
+    -- cacheado ya vencio, obtener_bearer_header hace su propio DELETE +
+    -- set de headers (Content-Type) para pedir el token nuevo a ORDS,
+    -- pisando el NAME='Authorization' que se acababa de asignar --
+    -- el header final terminaba siendo "Content-Type: Bearer <token>",
+    -- sin ningun Authorization. Bug real, confirmado por Sergio: fallaba
+    -- solo cuando tocaba pedir un token nuevo (sesion recien logueada),
+    -- funcionaba si el token seguia cacheado de una llamada previa.
+    l_auth := obtener_bearer_header;
+
     APEX_WEB_SERVICE.G_REQUEST_HEADERS.DELETE;
     APEX_WEB_SERVICE.G_REQUEST_HEADERS(1).NAME  := 'Authorization';
-    APEX_WEB_SERVICE.G_REQUEST_HEADERS(1).VALUE := obtener_bearer_header;
+    APEX_WEB_SERVICE.G_REQUEST_HEADERS(1).VALUE := l_auth;
 
     l_blob := APEX_WEB_SERVICE.MAKE_REST_REQUEST_B(
       p_url         => url_backend() || '/' || p_ruta,
