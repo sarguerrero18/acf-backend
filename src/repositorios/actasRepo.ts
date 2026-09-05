@@ -181,6 +181,43 @@ export interface ComiteBajaDetalleLinea {
   observaciones: string | null;
 }
 
+export interface DeterioroCabecera extends EntidadInfo {
+  id: number;
+  vigencia: number;
+  consecutivo: number;
+  numero_acta: string;
+  fecha_deterioro: string;
+  // ACF_DETERIORO.ESTADO solo permite ELABORADO/APROBADO (sin ANULADO,
+  // igual patron que Comite de Bajas) -- DDL real confirmada por Sergio.
+  estado: 'ELABORADO' | 'APROBADO';
+  observaciones: string | null;
+  fecha_aprobacion: string | null;
+  usuario_aprobacion: string | null;
+  fecha_creacion: string | null;
+  fecha_modificacion: string | null;
+  desc_tipo_movimiento: string;
+  nombre_dependencia: string | null;
+}
+
+export interface DeterioroDetalleLinea {
+  numero_placa: number;
+  // Sergio pidio agregar la descripcion del activo (igual que las
+  // otras 5 actas) -- ya no falta, deterioro-detalle la trae via JOIN
+  // a ACF_CATALOGO.
+  descripcion: string;
+  // Campos priorizados por Sergio para el reporte impreso -- el modelo
+  // de datos de ACF_DETALLE_DETERIORO tiene mas columnas (precio
+  // estimado de venta, costo directo de venta, valor neto razonable,
+  // valor en uso) que NO se muestran en el acta, solo se usan para
+  // calcular estas.
+  valor_en_libros: number;
+  importe_recuperable: number;
+  diagnostico: string | null;
+  indicio: string;
+  aplica_deterioro: 'S' | 'N';
+  observaciones: string | null;
+}
+
 async function unico<T>(path: string, params: Record<string, string>, contexto: string): Promise<T> {
   const items = await ordsGetCollection<T>(path, params);
   if (items.length === 0) {
@@ -248,6 +285,22 @@ export async function buscarComiteBaja(id: string): Promise<{
     ordsGetCollection<ComiteBajaDetalleLinea>('/comite-detalle', { id }),
   ]);
   const firmantes = await ordsGetCollection<Firmante>('/comite-firmantes', {
+    clienteId: String(cabecera.cliente_id),
+    entidadId: String(cabecera.entidad_id),
+  });
+  return { cabecera, detalle, firmantes };
+}
+
+export async function buscarDeterioro(id: string): Promise<{
+  cabecera: DeterioroCabecera;
+  detalle: DeterioroDetalleLinea[];
+  firmantes: Firmante[];
+}> {
+  const [cabecera, detalle] = await Promise.all([
+    unico<DeterioroCabecera>('/deterioro-cabecera', { id }, 'Acta de Deterioro'),
+    ordsGetCollection<DeterioroDetalleLinea>('/deterioro-detalle', { id }),
+  ]);
+  const firmantes = await ordsGetCollection<Firmante>('/deterioro-firmantes', {
     clienteId: String(cabecera.cliente_id),
     entidadId: String(cabecera.entidad_id),
   });

@@ -10,8 +10,37 @@
 
 import PDFDocument from 'pdfkit';
 
+// Mantenidos como constantes exportadas por compatibilidad (nada fuera
+// de este archivo las usa hoy, ver busqueda previa a la OCTAVA
+// ADICION), pero las funciones de dibujo YA NO las usan directo --
+// ver nota de OCTAVA ADICION mas abajo.
 export const MARGEN = 50;
 export const ANCHO_UTIL = 512; // LETTER (612pt) - 2*50
+
+// OCTAVA ADICION (acta de Deterioro, landscape + margenes estrechos):
+// hasta aca, dibujarEncabezado/dibujarMarcaDeAgua/dibujarBloqueFirmas/
+// dibujarTabla/dibujarPie usaban las constantes MARGEN=50/ANCHO_UTIL=512
+// hardcodeadas -- validas solo para LETTER portrait con margen 50. La
+// acta de Deterioro pidio orientacion horizontal ("landscape") con
+// margenes estrechos (Sergio: "Como son bastantes campos se debe
+// generar un reporte con orientacion horizontal y con margenes
+// estrechos"), lo que rompia esas dos constantes. En vez de duplicar
+// las 5 funciones para un segundo layout, se cambiaron para leer el
+// margen/ancho util DIRECTO del objeto `doc` (doc.page.margins.*,
+// doc.page.width/height), que pdfkit ya conoce (se configura al crear
+// el PDFDocument con size/layout/margins). Para las 5 actas existentes
+// (portrait LETTER, margin:50) esto da EXACTAMENTE los mismos valores
+// que las constantes hardcodeadas (612-2*50=512), o sea CERO cambio de
+// comportamiento -- confirmado antes de aplicar el cambio. Las
+// constantes MARGEN/ANCHO_UTIL se dejan exportadas por si algo externo
+// las usaba, pero ya no son la fuente de verdad dentro de este archivo.
+function margenIzquierdo(doc: PDFKit.PDFDocument): number {
+  return doc.page.margins.left;
+}
+function anchoUtilDoc(doc: PDFKit.PDFDocument): number {
+  return doc.page.width - doc.page.margins.left - doc.page.margins.right;
+}
+
 // Espacio en blanco entre columnas de dibujarTabla -- sin esto, dos
 // columnas seguidas (ej. "No. Egreso" y "Observaciones") podian quedar
 // pegadas visualmente cuando el contenido de la primera llega justo al
@@ -63,20 +92,22 @@ export function dibujarEncabezado(
   tituloActa: string,
   numeroDocumento: string
 ): number {
+  const margen = margenIzquierdo(doc);
+  const anchoUtil = anchoUtilDoc(doc);
   const yInicial = doc.y;
 
   if (entidad.logo_entidad) {
     try {
       const buffer = Buffer.from(entidad.logo_entidad, 'base64');
-      doc.image(buffer, MARGEN, yInicial, { width: 60, height: 60, fit: [60, 60] });
+      doc.image(buffer, margen, yInicial, { width: 60, height: 60, fit: [60, 60] });
     } catch {
       // Logo corrupto o formato no reconocido por pdfkit -- se omite sin
       // romper la generacion del acta.
     }
   }
 
-  const xTitulo = MARGEN + 75;
-  const anchoTitulo = ANCHO_UTIL - 75;
+  const xTitulo = margen + 75;
+  const anchoTitulo = anchoUtil - 75;
 
   doc.font('Helvetica-Bold').fontSize(13).text(entidad.nombre_cliente ?? '', xTitulo, yInicial, {
     width: anchoTitulo,
@@ -95,8 +126,8 @@ export function dibujarEncabezado(
   const yDespuesTitulo = doc.y + 10;
   doc.y = Math.max(yDespuesLogo, yDespuesTitulo);
 
-  doc.font('Helvetica-Bold').fontSize(10).text(numeroDocumento, MARGEN, doc.y, {
-    width: ANCHO_UTIL,
+  doc.font('Helvetica-Bold').fontSize(10).text(numeroDocumento, margen, doc.y, {
+    width: anchoUtil,
     align: 'center',
   });
   doc.moveDown(1);
@@ -119,8 +150,14 @@ export function dibujarMarcaDeAgua(doc: PDFKit.PDFDocument, estado: string, fech
   const xOriginal = doc.x;
   const yOriginal = doc.y;
 
+  // Origen de rotacion = centro exacto de la pagina actual. Para
+  // portrait LETTER (612x792) esto da [306, 396] -- el mismo valor
+  // hardcodeado que tenia esta funcion antes de la OCTAVA ADICION --
+  // asi que no hay cambio de comportamiento en las 5 actas existentes.
+  // Para landscape (ej. 792x612, acta de Deterioro) da [396, 306], que
+  // es lo correcto para esa orientacion.
   doc.save();
-  doc.rotate(-45, { origin: [306, 396] });
+  doc.rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] });
   doc.opacity(0.12);
   doc.font('Helvetica-Bold').fontSize(58).fillColor('gray');
   doc.text(estado, 6, 350, { width: 900, align: 'center' });
@@ -161,12 +198,14 @@ export interface DatosFirma {
  * Bloques de firma lado a lado (1 o 2 firmas), con linea y datos debajo.
  */
 export function dibujarBloqueFirmas(doc: PDFKit.PDFDocument, firmas: DatosFirma[]): void {
+  const anchoUtil = anchoUtilDoc(doc);
+  const margen = margenIzquierdo(doc);
   doc.moveDown(3);
   const y = doc.y;
-  const anchoBloque = ANCHO_UTIL / firmas.length;
+  const anchoBloque = anchoUtil / firmas.length;
 
   firmas.forEach((firma, i) => {
-    const x = MARGEN + i * anchoBloque;
+    const x = margen + i * anchoBloque;
     const anchoTexto = anchoBloque - 20;
     const nombre = nombreValido(firma.nombre);
     const dependencia = nombreValido(firma.dependencia);
@@ -205,6 +244,8 @@ export interface ColumnaTabla<T> {
  * criterio manual de columnas fijas ya usado en generarComprobantePdf.ts.
  */
 export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<T>[], filas: T[]): void {
+  const margen = margenIzquierdo(doc);
+  const anchoUtil = anchoUtilDoc(doc);
   // doc.text() con x/y explicitos NO actualiza doc.y en funcion de la
   // columna mas alta -- lo deja en donde termino la ULTIMA columna
   // escrita. Si una columna anterior se envuelve a 2-3 lineas (ej.
@@ -225,7 +266,7 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
 
   const dibujarEncabezadoTabla = () => {
     const y = doc.y;
-    let x = MARGEN;
+    let x = margen;
     doc.font('Helvetica-Bold').fontSize(8);
     const titulos = columnas.map((col) => col.titulo);
     const altura = alturaFila(titulos);
@@ -234,7 +275,7 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
       x += col.ancho;
     }
     doc.y = y + altura + 3;
-    doc.moveTo(MARGEN, doc.y).lineTo(MARGEN + ANCHO_UTIL, doc.y).stroke();
+    doc.moveTo(margen, doc.y).lineTo(margen + anchoUtil, doc.y).stroke();
     doc.moveDown(0.2);
   };
 
@@ -242,13 +283,18 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
 
   doc.font('Helvetica').fontSize(8);
   for (const fila of filas) {
-    if (doc.y > doc.page.height - MARGEN - 80) {
+    // Antes se comparaba contra `MARGEN` (hardcodeado en 50) como proxy
+    // del margen inferior -- funcionaba porque las 5 actas existentes
+    // usan margen uniforme de 50pt en los 4 lados. Con margenes
+    // estrechos/asimetricos (acta de Deterioro) hay que usar el margen
+    // inferior real de la pagina, no el izquierdo.
+    if (doc.y > doc.page.height - doc.page.margins.bottom - 80) {
       doc.addPage();
       dibujarEncabezadoTabla();
       doc.font('Helvetica').fontSize(8);
     }
     const y = doc.y;
-    let x = MARGEN;
+    let x = margen;
     const valores = columnas.map((col) => col.valor(fila));
     const altura = alturaFila(valores);
     for (const col of columnas) {
@@ -264,26 +310,28 @@ export function dibujarTabla<T>(doc: PDFKit.PDFDocument, columnas: ColumnaTabla<
  * dibuja al final, anclado a la parte baja de la pagina actual.
  */
 export function dibujarPie(doc: PDFKit.PDFDocument, usuarioImprime: string): void {
-  const yPie = doc.page.height - MARGEN + 10;
+  const margen = margenIzquierdo(doc);
+  const anchoUtil = anchoUtilDoc(doc);
+  // yPie cae DENTRO del margen inferior (page.height - margenInferior +
+  // 10 > page.height - margenInferior), a proposito, para que el pie
+  // quede pegado al borde de la hoja. Pero pdfkit calcula su limite de
+  // contenido como page.height - margins.bottom, y si el y solicitado
+  // lo supera, dispara un salto de pagina automatico ANTES de escribir
+  // -- por eso el pie terminaba solo en una hoja nueva. Se baja el
+  // margen inferior a 0 momentaneamente (pdfkit ya no ve motivo para
+  // paginar) y se restaura enseguida despues de escribir.
+  const margenInferiorOriginal = doc.page.margins.bottom;
+  const yPie = doc.page.height - margenInferiorOriginal + 10;
   const fechaImpresion = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-  // yPie cae DENTRO del margen inferior (page.height - MARGEN + 10 >
-  // page.height - MARGEN), a proposito, para que el pie quede pegado al
-  // borde de la hoja. Pero pdfkit calcula su limite de contenido como
-  // page.height - margins.bottom, y si el y solicitado lo supera,
-  // dispara un salto de pagina automatico ANTES de escribir -- por eso
-  // el pie terminaba solo en una hoja nueva. Se baja el margen inferior
-  // a 0 momentaneamente (pdfkit ya no ve motivo para paginar) y se
-  // restaura enseguida despues de escribir.
-  const margenInferiorOriginal = doc.page.margins.bottom;
   doc.page.margins.bottom = 0;
 
   doc
     .font('Helvetica')
     .fontSize(7)
     .fillColor('gray')
-    .text(`Impreso el ${fechaImpresion} por ${usuarioImprime}`, MARGEN, yPie, {
-      width: ANCHO_UTIL,
+    .text(`Impreso el ${fechaImpresion} por ${usuarioImprime}`, margen, yPie, {
+      width: anchoUtil,
       align: 'center',
     });
 

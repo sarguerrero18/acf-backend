@@ -137,6 +137,57 @@
 --    (proxy, no hay columna propia de fecha de anulacion). Si se
 --    quiere precision real habria que resolver contra el historico --
 --    pendiente confirmar su estructura con Sergio.
+--
+-- OCTAVA ADICION: acta de Deterioro (2026-09-04/05). DDL real
+-- compartida por Sergio para ACF_DETERIORO (ID/CLIENTE_ID/ENTIDAD_ID/
+-- TIPO_MOVIMIENTO_ID/VIGENCIA/CONSECUTIVO/NUMERO_ACTA/FECHA/ESTADO IN
+-- ('ELABORADO','APROBADO') -- OJO, sin ANULADO, igual que Comite de
+-- Bajas -- /DEPENDENCIA_ID/FECHA_APROBACION/USUARIO_APROBACION/
+-- OBSERVACIONES/auditoria), ACF_DETALLE_DETERIORO (CLIENTE_ID/
+-- ENTIDAD_ID/DETERIORO_ID/ACTIVO_FIJO_ID/INDICIO_DETERIORO_ID/
+-- VALOR_EN_LIBROS/PRECIO_ESTIMADO_VENTA/COSTO_DIRECTO_VENTA/
+-- VALOR_NETO_RAZONABLE/VALOR_EN_USO/IMPORTE_RECUPERABLE/
+-- PERDIDA_POR_DETERIORO/DIAGNOSTICO/OBSERVACIONES/APLICA_DETERIORO
+-- CHAR(1) S/N/auditoria) y la nueva tabla catalogo ACF_INDICIO_
+-- DETERIORO (CLIENTE_ID/ENTIDAD_ID/TIPO_FUENTE EXTERNA|INTERNA/
+-- ORIGEN_FUENTE/DESCRIPCION/auditoria), sembrada por Sergio con 7
+-- indicios de deterioro segun NIC 36 parrafo 12 (a-d externos, e-g
+-- internos).
+--
+-- deterioro-detalle selecciona los 7 campos que Sergio prioriza para
+-- el reporte impreso (placa, valor en libros, importe recuperable,
+-- diagnostico, indicio, aplica deterioro, observaciones) -- igual
+-- criterio que las otras actas, donde el endpoint de detalle solo
+-- trae lo que el PDF necesita, no todo el modelo de datos. CORRECCION
+-- del mismo dia: Sergio pidio agregar tambien la Descripcion del
+-- activo (join ACF_ACTIVOS_FIJOS -> ACF_CATALOGO, mismo patron que las
+-- otras 5 actas) -- deterioro-detalle ahora trae 8 columnas.
+--
+-- SUPUESTOS DE LA OCTAVA ADICION -- CONFIRMADOS por Sergio el mismo
+-- dia (ya no son supuestos):
+--
+-- 1. deterioro-firmantes restringe ROL IN ('CONTADOR','ALMACENISTA') --
+--    confirmado: Sergio creo los firmantes CONTADOR y ALMACENISTA para
+--    Deterioro (mismo patron que Depreciacion), asi que la restriccion
+--    se queda tal cual.
+-- 2. El CHECK CONSTRAINT de ACF_FIRMANTE.TIPO_DOCUMENTO ya fue
+--    actualizado por Sergio para aceptar 'DETERIORO' -- confirmado.
+-- 3. El prefijo de consecutivo del trigger ACF_DETERIORO_BIU YA NO es
+--    'CMBJ' (el que compartia, sin corregir, con
+--    ACF_COMITE_BAJA_BIU) -- Sergio lo actualizo a 'DTAF', propio de
+--    Deterioro. Esto es un cambio en el trigger del lado de la base de
+--    datos de Sergio (no vive en este archivo, que solo define
+--    endpoints ORDS) -- se deja esta nota aca solo como registro
+--    historico de que la duda se resolvio. Ademas, Sergio confirmo que
+--    el trigger ACF_DETERIORO_BIU esta en estado ENABLE (el
+--    ALTER TRIGGER ... DISABLE del DDL original ya no aplica) -- por
+--    lo tanto CONSECUTIVO/FECHA_CREACION/USUARIO_CREACION/CLIENTE_ID/
+--    ENTIDAD_ID de ACF_DETERIORO SI se llenan solos al insertar. Ya no
+--    queda ningun supuesto abierto de la OCTAVA ADICION.
+-- 4. La tabla no tiene columna propia de "fecha en que se aprobo" mas
+--    alla de FECHA_APROBACION (si tiene) -- se sigue el mismo patron de
+--    fechaDelEstado() ya usado (ELABORADO->fecha_creacion,
+--    APROBADO->fecha_aprobacion; Deterioro no tiene ANULADO).
 -- ============================================================
 
 BEGIN
@@ -553,6 +604,97 @@ BEGIN
         AND F.ENTIDAD_ID = :entidadId
         AND F.TIPO_DOCUMENTO = 'COMITE_BAJA'
         AND F.ESTADO = 'ACTIVO'
+      ORDER BY F.ORDEN_FIRMA
+    ]'
+  );
+
+  ------------------------------------------------------------
+  -- DETERIORO (landscape/margenes estrechos en el generador Node --
+  -- ver src/pdf/generarActaDeterioro.ts. Firmantes: mismo patron que
+  -- Depreciacion via ACF_FIRMANTE, TIPO_DOCUMENTO='DETERIORO',
+  -- restringiendo ROL -- confirmado por Sergio: se crearon los
+  -- firmantes CONTADOR y ALMACENISTA para Deterioro, igual que
+  -- Depreciacion, asi que el filtro ROL IN ('CONTADOR','ALMACENISTA')
+  -- se deja tal cual. El CHECK CONSTRAINT de
+  -- ACF_FIRMANTE.TIPO_DOCUMENTO ya fue actualizado por Sergio para
+  -- aceptar 'DETERIORO'. deterioro-detalle ahora incluye la columna
+  -- Descripcion del activo (JOIN a ACF_CATALOGO), a pedido de Sergio.)
+  ------------------------------------------------------------
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'deterioro-cabecera');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'deterioro-cabecera',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        D.ID AS id, D.CLIENTE_ID AS cliente_id, D.ENTIDAD_ID AS entidad_id,
+        D.VIGENCIA AS vigencia, D.CONSECUTIVO AS consecutivo,
+        D.NUMERO_ACTA AS numero_acta, D.FECHA AS fecha_deterioro,
+        D.ESTADO AS estado, D.OBSERVACIONES AS observaciones,
+        D.FECHA_APROBACION AS fecha_aprobacion, D.USUARIO_APROBACION AS usuario_aprobacion,
+        D.FECHA_CREACION AS fecha_creacion, D.FECHA_MODIFICACION AS fecha_modificacion,
+        TM.DESC_TIPO_MOVIMIENTO AS desc_tipo_movimiento,
+        PK_GENERAL.fn_nombre_dependencia(D.DEPENDENCIA_ID) AS nombre_dependencia,
+        PK_GENERAL.fn_nombre_cliente(D.CLIENTE_ID) AS nombre_cliente,
+        PK_GENERAL.fn_nombre_entidad(D.ENTIDAD_ID) AS nombre_entidad,
+        GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
+        GE.LOGO_FILENAME AS logo_filename
+      FROM ACF_DETERIORO D
+      JOIN ACF_TIPO_MOVIMIENTO TM ON TM.ID = D.TIPO_MOVIMIENTO_ID
+      JOIN GEN_ENTIDAD GE         ON GE.ID = D.ENTIDAD_ID
+      WHERE D.ID = :id
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'deterioro-detalle');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'deterioro-detalle',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        AF.NUMERO_PLACA AS numero_placa, C.DESCRIPCION AS descripcion,
+        DD.VALOR_EN_LIBROS AS valor_en_libros,
+        DD.IMPORTE_RECUPERABLE AS importe_recuperable,
+        DD.DIAGNOSTICO AS diagnostico,
+        IND.DESCRIPCION AS indicio,
+        DD.APLICA_DETERIORO AS aplica_deterioro,
+        DD.OBSERVACIONES AS observaciones
+      FROM ACF_DETALLE_DETERIORO DD
+      JOIN ACF_ACTIVOS_FIJOS AF        ON AF.ID = DD.ACTIVO_FIJO_ID
+      JOIN ACF_CATALOGO C              ON C.ID = AF.CATALOGO_ID
+      JOIN ACF_INDICIO_DETERIORO IND   ON IND.ID = DD.INDICIO_DETERIORO_ID
+      WHERE DD.DETERIORO_ID = :id
+      ORDER BY AF.NUMERO_PLACA
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'deterioro-firmantes');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'deterioro-firmantes',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        F.ROL AS rol, F.CEDULA AS cedula,
+        F.MATRICULA_PROFESIONAL AS matricula_profesional, F.ORDEN_FIRMA AS orden_firma,
+        PK_GENERAL.fn_nombre_tercero(GF.FUNCIONARIO_ID) AS nombre_firmante
+      FROM ACF_FIRMANTE F
+      LEFT JOIN GTH_FUNCIONARIOS GF ON GF.ID = F.FUNCIONARIO_ID
+      WHERE F.CLIENTE_ID = :clienteId
+        AND F.ENTIDAD_ID = :entidadId
+        AND F.TIPO_DOCUMENTO = 'DETERIORO'
+        AND F.ESTADO = 'ACTIVO'
+        AND F.ROL IN ('CONTADOR','ALMACENISTA')
       ORDER BY F.ORDEN_FIRMA
     ]'
   );

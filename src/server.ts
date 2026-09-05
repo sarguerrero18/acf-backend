@@ -1,12 +1,13 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { verificarTokenApex } from './http/verificarTokenApex';
-import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja } from './repositorios/actasRepo';
+import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro } from './repositorios/actasRepo';
 import { generarActaIngreso } from './pdf/generarActaIngreso';
 import { generarActaTraslado } from './pdf/generarActaTraslado';
 import { generarActaEgreso } from './pdf/generarActaEgreso';
 import { generarActaDepreciacion } from './pdf/generarActaDepreciacion';
 import { generarActaComiteBaja } from './pdf/generarActaComiteBaja';
+import { generarActaDeterioro } from './pdf/generarActaDeterioro';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -102,6 +103,19 @@ app.get('/actas/comite_baja/:id', verificarTokenApex, async (req: Request, res: 
     res.send(pdf);
   } catch (err) {
     console.error('[actas/comite_baja] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/actas/deterioro/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle, firmantes } = await buscarDeterioro(req.params.id);
+    const pdf = await generarActaDeterioro(cabecera, detalle, firmantes, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acta_deterioro_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/deterioro] error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
