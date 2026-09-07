@@ -59,6 +59,29 @@ export function fmtFecha(fecha: string | null | undefined): string {
 }
 
 /**
+ * Fecha/hora ACTUAL (momento de imprimir), en zona horaria de Colombia
+ * (America/Bogota, UTC-5 fijo, sin horario de verano) -- usada solo por
+ * dibujarPie(). Sergio reporto que la hora del pie de pagina salia 5
+ * horas adelantada: `new Date().toISOString()` siempre devuelve UTC, sin
+ * importar la zona horaria configurada en el servidor donde corre
+ * acf-backend -- muchos contenedores/Node corren en UTC por defecto
+ * independientemente de donde este el servidor fisicamente. Se usa
+ * Intl.DateTimeFormat con timeZone explicito en vez de depender de la
+ * zona horaria del proceso (TZ del sistema operativo/contenedor), que es
+ * justo la fuente del bug original.
+ */
+function fechaHoraImpresionBogota(): string {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const obtiene = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? '00';
+  return `${obtiene('year')}-${obtiene('month')}-${obtiene('day')} ${obtiene('hour')}:${obtiene('minute')}:${obtiene('second')}`;
+}
+
+/**
  * Fecha asociada al ESTADO actual del movimiento -- ver nota de
  * "SUPUESTO A VALIDAR" en migrations/04_ords_actas.sql: se resuelve
  * con las columnas del propio encabezado (no hay historico disponible
@@ -322,7 +345,7 @@ export function dibujarPie(doc: PDFKit.PDFDocument, usuarioImprime: string): voi
   // paginar) y se restaura enseguida despues de escribir.
   const margenInferiorOriginal = doc.page.margins.bottom;
   const yPie = doc.page.height - margenInferiorOriginal + 10;
-  const fechaImpresion = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const fechaImpresion = fechaHoraImpresionBogota();
 
   doc.page.margins.bottom = 0;
 
