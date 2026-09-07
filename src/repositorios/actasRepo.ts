@@ -218,6 +218,54 @@ export interface DeterioroDetalleLinea {
   observaciones: string | null;
 }
 
+export interface RVUCabecera extends EntidadInfo {
+  id: number;
+  consecutivo: number;
+  // ACF_RVU.ESTADO solo permite ELABORADO/APROBADO (sin ANULADO, mismo
+  // patron que Comite de Bajas/Deterioro) -- DDL confirmada en
+  // ddl_recalculo_vida_util.sql.
+  estado: 'ELABORADO' | 'APROBADO';
+  fecha_generacion: string;
+  fecha_aprobacion: string | null;
+  usuario_aprobacion: string | null;
+  fecha_creacion: string | null;
+  fecha_modificacion: string | null;
+  numero_documento_soporte: string | null;
+  fecha_documento_soporte: string | null;
+  observaciones: string | null;
+  // ACF_RVU no tiene VIGENCIA/NUMERO_ACTA (a diferencia de
+  // Deterioro/Comite de Bajas) -- usa PERIODO_ID (ANIO/MES via JOIN a
+  // ACF_PERIODO), mismo patron que Depreciacion.
+  anio: number;
+  mes: number;
+  desc_tipo_movimiento: string;
+}
+
+export interface RVUDetalleLinea {
+  numero_placa: number;
+  descripcion: string;
+  causa: string;
+  justificacion: string;
+  // Los unicos 2 insumos que ingresa el evaluador -- el resto de los
+  // campos "despues" los calcula el trigger ACF_DETALLE_RVU_BIU (ver
+  // ddl_recalculo_vida_util.sql). AJUSTE_DIAS puede ser negativo.
+  ajuste_dias: number;
+  porcentaje_valor_residual: number;
+  // Informativo -- un recalculo de vida util puro (NIC 8) no cambia el
+  // valor en libros vigente, solo alimenta el calculo de
+  // VALOR_RESIDUAL_DESPUES.
+  valor_libros_antes: number;
+  vida_util_ajustada_antes: number;
+  vida_util_ajustada_despues: number;
+  vida_util_restante_antes: number;
+  vida_util_restante_despues: number;
+  valor_residual_antes: number;
+  valor_residual_despues: number;
+  // Concepto fiscal distinto (Estatuto Tributario), snapshot puramente
+  // informativo sin antes/despues -- ver nota en ddl_recalculo_vida_util.sql.
+  valor_salvamento: number;
+}
+
 async function unico<T>(path: string, params: Record<string, string>, contexto: string): Promise<T> {
   const items = await ordsGetCollection<T>(path, params);
   if (items.length === 0) {
@@ -301,6 +349,22 @@ export async function buscarDeterioro(id: string): Promise<{
     ordsGetCollection<DeterioroDetalleLinea>('/deterioro-detalle', { id }),
   ]);
   const firmantes = await ordsGetCollection<Firmante>('/deterioro-firmantes', {
+    clienteId: String(cabecera.cliente_id),
+    entidadId: String(cabecera.entidad_id),
+  });
+  return { cabecera, detalle, firmantes };
+}
+
+export async function buscarRVU(id: string): Promise<{
+  cabecera: RVUCabecera;
+  detalle: RVUDetalleLinea[];
+  firmantes: Firmante[];
+}> {
+  const [cabecera, detalle] = await Promise.all([
+    unico<RVUCabecera>('/rvu-cabecera', { id }, 'Acta de Recalculo de Vida Util'),
+    ordsGetCollection<RVUDetalleLinea>('/rvu-detalle', { id }),
+  ]);
+  const firmantes = await ordsGetCollection<Firmante>('/rvu-firmantes', {
     clienteId: String(cabecera.cliente_id),
     entidadId: String(cabecera.entidad_id),
   });

@@ -1,13 +1,14 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { verificarTokenApex } from './http/verificarTokenApex';
-import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro } from './repositorios/actasRepo';
+import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro, buscarRVU } from './repositorios/actasRepo';
 import { generarActaIngreso } from './pdf/generarActaIngreso';
 import { generarActaTraslado } from './pdf/generarActaTraslado';
 import { generarActaEgreso } from './pdf/generarActaEgreso';
 import { generarActaDepreciacion } from './pdf/generarActaDepreciacion';
 import { generarActaComiteBaja } from './pdf/generarActaComiteBaja';
 import { generarActaDeterioro } from './pdf/generarActaDeterioro';
+import { generarActaRVU } from './pdf/generarActaRVU';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -116,6 +117,22 @@ app.get('/actas/deterioro/:id', verificarTokenApex, async (req: Request, res: Re
     res.send(pdf);
   } catch (err) {
     console.error('[actas/deterioro] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Ruta 'rvu' (mismo alias corto usado en la Pagina 39/40 de APEX, ver
+// f104_page_39.sql/f104_page_40.sql) para el acta de Recalculo de Vida
+// Util.
+app.get('/actas/rvu/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle, firmantes } = await buscarRVU(req.params.id);
+    const pdf = await generarActaRVU(cabecera, detalle, firmantes, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acta_rvu_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/rvu] error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });

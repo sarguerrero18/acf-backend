@@ -699,6 +699,121 @@ BEGIN
     ]'
   );
 
+  ------------------------------------------------------------
+  -- RECALCULO DE VIDA UTIL (RVU) -- acta sin firmantes-entrega/recibe,
+  -- mismo criterio de Deterioro (evaluacion tecnica, sin
+  -- contabilizacion -- ver ddl_recalculo_vida_util.sql). Firmantes:
+  -- confirmado por Sergio (2026-09-07) mismo patron de
+  -- Depreciacion/Deterioro, TIPO_DOCUMENTO='RECALCULO_VIDA_UTIL' (SIN
+  -- abreviar -- es un valor de dato, no un nombre de objeto, mismo
+  -- criterio ya aplicado a TIPO_MOV_ACF), ROL IN ('CONTADOR',
+  -- 'ALMACENISTA'). *** SUPUESTO A VALIDAR: requiere que Sergio extienda
+  -- el CHECK CONSTRAINT de ACF_FIRMANTE.TIPO_DOCUMENTO para aceptar
+  -- 'RECALCULO_VIDA_UTIL' y cree los firmantes activos para ese tipo
+  -- (igual que hizo para 'DETERIORO') -- mientras tanto rvu-firmantes
+  -- devuelve 0 filas y el generador cae al placeholder "(sin asignar)".
+  --
+  -- rvu-cabecera: ACF_RVU no tiene VIGENCIA/NUMERO_ACTA (a diferencia de
+  -- Deterioro/Comite de Bajas) -- usa CONSECUTIVO + PERIODO_ID (ANIO/MES
+  -- via JOIN a ACF_PERIODO), mismo patron de Depreciacion.
+  --
+  -- rvu-detalle: trae los campos priorizados para el acta impresa --
+  -- placa/descripcion del activo, nombre de la causa, justificacion, los
+  -- dos insumos del evaluador (ajuste_dias, porcentaje_valor_residual),
+  -- valor en libros y los 3 pares antes/despues (vida util ajustada,
+  -- vida util restante, valor residual). VALOR_SALVAMENTO (informativo,
+  -- sin antes/despues, ver ddl_recalculo_vida_util.sql) se incluye por
+  -- si el acta lo quiere mostrar, pero no es obligatorio en la tabla
+  -- impresa.
+  ------------------------------------------------------------
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'rvu-cabecera');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'rvu-cabecera',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        R.ID AS id, R.CLIENTE_ID AS cliente_id, R.ENTIDAD_ID AS entidad_id,
+        R.CONSECUTIVO AS consecutivo, R.ESTADO AS estado,
+        R.FECHA_GENERACION AS fecha_generacion, R.FECHA_APROBACION AS fecha_aprobacion,
+        R.USUARIO_APROBACION AS usuario_aprobacion,
+        R.FECHA_CREACION AS fecha_creacion, R.FECHA_MODIFICACION AS fecha_modificacion,
+        R.NUMERO_DOCUMENTO_SOPORTE AS numero_documento_soporte,
+        R.FECHA_DOCUMENTO_SOPORTE AS fecha_documento_soporte,
+        R.OBSERVACIONES AS observaciones,
+        P.ANIO AS anio, P.MES AS mes,
+        TM.DESC_TIPO_MOVIMIENTO AS desc_tipo_movimiento,
+        PK_GENERAL.fn_nombre_cliente(R.CLIENTE_ID) AS nombre_cliente,
+        PK_GENERAL.fn_nombre_entidad(R.ENTIDAD_ID) AS nombre_entidad,
+        GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
+        GE.LOGO_FILENAME AS logo_filename
+      FROM ACF_RVU R
+      JOIN ACF_PERIODO P          ON P.ID = R.PERIODO_ID
+      JOIN ACF_TIPO_MOVIMIENTO TM ON TM.ID = R.TIPO_MOVIMIENTO_ID
+      JOIN GEN_ENTIDAD GE         ON GE.ID = R.ENTIDAD_ID
+      WHERE R.ID = :id
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'rvu-detalle');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'rvu-detalle',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        AF.NUMERO_PLACA AS numero_placa, C.DESCRIPCION AS descripcion,
+        CA.NOMBRE AS causa,
+        DR.JUSTIFICACION AS justificacion,
+        DR.AJUSTE_DIAS AS ajuste_dias,
+        DR.PORCENTAJE_VALOR_RESIDUAL AS porcentaje_valor_residual,
+        DR.VALOR_LIBROS_ANTES AS valor_libros_antes,
+        DR.VIDA_UTIL_AJUSTADA_ANTES AS vida_util_ajustada_antes,
+        DR.VIDA_UTIL_AJUSTADA_DESPUES AS vida_util_ajustada_despues,
+        DR.VIDA_UTIL_RESTANTE_ANTES AS vida_util_restante_antes,
+        DR.VIDA_UTIL_RESTANTE_DESPUES AS vida_util_restante_despues,
+        DR.VALOR_RESIDUAL_ANTES AS valor_residual_antes,
+        DR.VALOR_RESIDUAL_DESPUES AS valor_residual_despues,
+        DR.VALOR_SALVAMENTO AS valor_salvamento
+      FROM ACF_DETALLE_RVU DR
+      JOIN ACF_ACTIVOS_FIJOS AF ON AF.ID = DR.ACTIVO_FIJO_ID
+      JOIN ACF_CATALOGO C       ON C.ID = AF.CATALOGO_ID
+      JOIN ACF_CAUSA_RVU CA     ON CA.ID = DR.CAUSA_RECALCULO_ID
+      WHERE DR.RECALCULO_ID = :id
+      ORDER BY AF.NUMERO_PLACA
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'rvu-firmantes');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'rvu-firmantes',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        F.ROL AS rol, F.CEDULA AS cedula,
+        F.MATRICULA_PROFESIONAL AS matricula_profesional, F.ORDEN_FIRMA AS orden_firma,
+        PK_GENERAL.fn_nombre_tercero(GF.FUNCIONARIO_ID) AS nombre_firmante
+      FROM ACF_FIRMANTE F
+      LEFT JOIN GTH_FUNCIONARIOS GF ON GF.ID = F.FUNCIONARIO_ID
+      WHERE F.CLIENTE_ID = :clienteId
+        AND F.ENTIDAD_ID = :entidadId
+        AND F.TIPO_DOCUMENTO = 'RECALCULO_VIDA_UTIL'
+        AND F.ESTADO = 'ACTIVO'
+        AND F.ROL IN ('CONTADOR','ALMACENISTA')
+      ORDER BY F.ORDEN_FIRMA
+    ]'
+  );
+
   COMMIT;
 END;
 /
