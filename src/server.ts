@@ -121,18 +121,27 @@ app.get('/actas/deterioro/:id', verificarTokenApex, async (req: Request, res: Re
   }
 });
 
-// Ruta 'rvu' (mismo alias corto usado en la Pagina 39/40 de APEX, ver
-// f104_page_39.sql/f104_page_40.sql) para el acta de Recalculo de Vida
-// Util.
-app.get('/actas/rvu/:id', verificarTokenApex, async (req: Request, res: Response) => {
+// Ruta 'recalculo_vida_util' -- NO usar el alias corto 'rvu' aqui: la
+// Pagina 36 (proxy de descarga generico, ver Objetos_BD_ACF.txt
+// "Modulo de Actas") arma la ruta como
+// 'actas/' || LOWER(:P36_TIPO) || '/' || :P36_ID, y P36_TIPO llega
+// siempre con el valor de NEGOCIO sin abreviar (mismo valor que
+// ACF_TIPO_MOVIMIENTO.TIPO_MOV_ACF y ACF_FIRMANTE.TIPO_DOCUMENTO,
+// 'RECALCULO_VIDA_UTIL' -- ver el DA de la Pagina 40:
+// P36_TIPO,P36_ID:RECALCULO_VIDA_UTIL,&P40_ID.). Solo los NOMBRES DE
+// OBJETOS de base de datos se abreviaron a RVU (ACF_RVU,
+// ACF_DETALLE_RVU, etc.) -- este segmento de URL no es un nombre de
+// objeto, es el mismo valor de negocio que las otras rutas de este
+// dispatcher (comparar con 'comite_baja', que tampoco se abrevio).
+app.get('/actas/recalculo_vida_util/:id', verificarTokenApex, async (req: Request, res: Response) => {
   try {
     const { cabecera, detalle, firmantes } = await buscarRVU(req.params.id);
     const pdf = await generarActaRVU(cabecera, detalle, firmantes, usuarioDeQuery(req));
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="acta_rvu_${cabecera.consecutivo}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="acta_recalculo_vida_util_${cabecera.consecutivo}.pdf"`);
     res.send(pdf);
   } catch (err) {
-    console.error('[actas/rvu] error:', err);
+    console.error('[actas/recalculo_vida_util] error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
