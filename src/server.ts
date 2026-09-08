@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { verificarTokenApex } from './http/verificarTokenApex';
-import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro, buscarRVU } from './repositorios/actasRepo';
+import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro, buscarRVU, buscarElementosFuncionario, buscarElementosDependencia } from './repositorios/actasRepo';
 import { generarActaIngreso } from './pdf/generarActaIngreso';
 import { generarActaTraslado } from './pdf/generarActaTraslado';
 import { generarActaEgreso } from './pdf/generarActaEgreso';
@@ -9,6 +9,8 @@ import { generarActaDepreciacion } from './pdf/generarActaDepreciacion';
 import { generarActaComiteBaja } from './pdf/generarActaComiteBaja';
 import { generarActaDeterioro } from './pdf/generarActaDeterioro';
 import { generarActaRVU } from './pdf/generarActaRVU';
+import { generarReporteElementosFuncionario } from './pdf/generarReporteElementosFuncionario';
+import { generarReporteElementosDependencia } from './pdf/generarReporteElementosDependencia';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -142,6 +144,41 @@ app.get('/actas/recalculo_vida_util/:id', verificarTokenApex, async (req: Reques
     res.send(pdf);
   } catch (err) {
     console.error('[actas/recalculo_vida_util] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Reportes de Elementos Asignados (Paginas 42/43, ver Objetos_BD_ACF.txt
+// "PAGINAS 42/43" y "CORRECCION PAGINAS 42/43"). A diferencia de las
+// actas de arriba, el :id de la URL no es la PK de un documento propio
+// -- es el ID de GTH_FUNCIONARIOS (elementos_funcionario) o de
+// GEN_DEPENDENCIA (elementos_dependencia) elegido en el selector de la
+// pagina. Mismo patron P36_TIPO,P36_ID de la Pagina 36 (proxy generico
+// de descarga): P36_TIPO='ELEMENTOS_FUNCIONARIO'/'ELEMENTOS_DEPENDENCIA'
+// (sin abreviar, valor de negocio -- mismo criterio ya aplicado a
+// 'comite_baja'/'recalculo_vida_util').
+app.get('/actas/elementos_funcionario/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarElementosFuncionario(req.params.id);
+    const pdf = await generarReporteElementosFuncionario(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="reporte_elementos_funcionario_${cabecera.funcionario_id}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/elementos_funcionario] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/actas/elementos_dependencia/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarElementosDependencia(req.params.id);
+    const pdf = await generarReporteElementosDependencia(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="reporte_elementos_dependencia_${cabecera.dependencia_id}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/elementos_dependencia] error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });

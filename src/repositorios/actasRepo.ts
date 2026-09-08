@@ -370,3 +370,74 @@ export async function buscarRVU(id: string): Promise<{
   });
   return { cabecera, detalle, firmantes };
 }
+
+// ------------------------------------------------------------
+// Reportes de Elementos Asignados (Paginas 42/43, ver Objetos_BD_ACF.txt
+// "PAGINAS 42/43"). A diferencia de las actas de arriba, no hay una
+// tabla de cabecera propia (ACF_INGRESO/ACF_TRASLADO/etc.) -- el
+// reporte es un filtro sobre ACF_ACTIVOS_FIJOS por FUNCIONARIO_
+// RESPONSABLE_ID o DEP_RESPONSABLE_ID. La "cabecera" (nombre_cliente/
+// nombre_entidad/logo, mas el nombre del funcionario o dependencia
+// elegido) se resuelve en el propio handler ORDS derivando CLIENTE_ID/
+// ENTIDAD_ID desde el primer activo encontrado para ese funcionario/
+// dependencia (ver migrations/05_ords_reportes_elementos.sql) -- si el
+// funcionario/dependencia no tiene NINGUN activo asignado, la cabecera
+// no resuelve fila (0 items) y unico() lanza el mismo error de "no se
+// encontro ningun registro" que ya usan las demas actas; en ese caso no
+// hay nada que imprimir de todas formas (el reporte en pantalla ya
+// muestra "Seleccione ... y haga clic en Buscar" con 0 filas).
+// ------------------------------------------------------------
+
+export interface ElementosFuncionarioCabecera extends EntidadInfo {
+  funcionario_id: number;
+  nombre_funcionario: string | null;
+  nombre_dependencia_funcionario: string | null;
+}
+
+export interface ElementosDependenciaCabecera extends EntidadInfo {
+  dependencia_id: number;
+  nombre_dependencia: string | null;
+}
+
+export interface ElementoAsignadoLinea {
+  numero_placa: number;
+  descripcion: string;
+  fecha_asignacion: string | null;
+  // nombre_dependencia solo viene poblado en elementos_funcionario-detalle
+  // (cada activo puede tener una dependencia distinta aunque el
+  // funcionario sea el mismo); nombre_funcionario solo en
+  // elementos_dependencia-detalle (varios funcionarios pueden compartir
+  // dependencia) -- Sergio confirmo columnas distintas para cada reporte.
+  nombre_dependencia?: string | null;
+  nombre_funcionario?: string | null;
+}
+
+export async function buscarElementosFuncionario(id: string): Promise<{
+  cabecera: ElementosFuncionarioCabecera;
+  detalle: ElementoAsignadoLinea[];
+}> {
+  const [cabecera, detalle] = await Promise.all([
+    unico<ElementosFuncionarioCabecera>(
+      '/elementos_funcionario-cabecera',
+      { id },
+      'Reporte de Elementos Asignados a un Funcionario'
+    ),
+    ordsGetCollection<ElementoAsignadoLinea>('/elementos_funcionario-detalle', { id }),
+  ]);
+  return { cabecera, detalle };
+}
+
+export async function buscarElementosDependencia(id: string): Promise<{
+  cabecera: ElementosDependenciaCabecera;
+  detalle: ElementoAsignadoLinea[];
+}> {
+  const [cabecera, detalle] = await Promise.all([
+    unico<ElementosDependenciaCabecera>(
+      '/elementos_dependencia-cabecera',
+      { id },
+      'Reporte de Elementos Asignados a una Dependencia'
+    ),
+    ordsGetCollection<ElementoAsignadoLinea>('/elementos_dependencia-detalle', { id }),
+  ]);
+  return { cabecera, detalle };
+}
