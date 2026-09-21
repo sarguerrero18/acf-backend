@@ -266,6 +266,50 @@ export interface RVUDetalleLinea {
   valor_salvamento: number;
 }
 
+// NOVENA ADICION (2026-09-21) -- Toma Fisica. A diferencia de las
+// otras actas, ACF_TF no tiene ningun funcionario "entrega/recibe" ni
+// firmantes por TIPO_DOCUMENTO -- la unica firma es la del almacenista
+// ACTIVO de ACF_ALMACENISTA (unico por CLIENTE_ID/ENTIDAD_ID, ver
+// UQ_ALMACENISTA_ACTIVO), resuelta directo en toma_fisica-cabecera
+// (nombre_almacenista, puede venir null). Por eso no hay un tercer
+// array de firmantes como en Deterioro/RVU/Comite/Depreciacion.
+export interface TomaFisicaCabecera extends EntidadInfo {
+  id: number;
+  consecutivo: number;
+  descripcion: string;
+  fecha_inicio: string;
+  fecha_fin: string | null;
+  alcance_tipo: 'TODA_ENTIDAD' | 'DEPENDENCIA' | 'BODEGA';
+  dep_responsable_id: number | null;
+  nombre_dep_responsable: string | null;
+  bodega: string | null;
+  // ACF_TF.ESTADO solo permite EN_PROCESO/CERRADA -- no tiene el
+  // ciclo ELABORADO/APROBADO/ANULADO de las demas actas (no genera
+  // contabilizacion, ver header VERSION 90 de PKG_ACF).
+  estado: 'EN_PROCESO' | 'CERRADA';
+  fecha_cierre: string | null;
+  usuario_cierre: string | null;
+  observaciones: string | null;
+  fecha_creacion: string | null;
+  usuario_creacion: string | null;
+  fecha_modificacion: string | null;
+  usuario_modificacion: string | null;
+  nombre_almacenista: string | null;
+}
+
+export interface TomaFisicaDetalleLinea {
+  numero_placa: number;
+  descripcion: string;
+  ubicacion_esperada: string | null;
+  ubicacion_encontrada: string | null;
+  estado_esperado: string | null;
+  estado_encontrado: string | null;
+  resultado: 'ENCONTRADO_UBICACION_ESPERADA' | 'ENCONTRADO_OTRA_UBICACION' | 'NO_ENCONTRADO' | 'ENCONTRADO_NOVEDAD_ESTADO';
+  nombre_dependencia_esperada: string | null;
+  nombre_dependencia_encontrada: string | null;
+  observaciones: string | null;
+}
+
 async function unico<T>(path: string, params: Record<string, string>, contexto: string): Promise<T> {
   const items = await ordsGetCollection<T>(path, params);
   if (items.length === 0) {
@@ -369,6 +413,20 @@ export async function buscarRVU(id: string): Promise<{
     entidadId: String(cabecera.entidad_id),
   });
   return { cabecera, detalle, firmantes };
+}
+
+// NOVENA ADICION (2026-09-21) -- Toma Fisica. Sin llamado a firmantes
+// (ver comentario del interface TomaFisicaCabecera) -- nombre_almacenista
+// ya viene resuelto dentro de la cabecera.
+export async function buscarTomaFisica(id: string): Promise<{
+  cabecera: TomaFisicaCabecera;
+  detalle: TomaFisicaDetalleLinea[];
+}> {
+  const [cabecera, detalle] = await Promise.all([
+    unico<TomaFisicaCabecera>('/toma_fisica-cabecera', { id }, 'Informe de Toma Fisica'),
+    ordsGetCollection<TomaFisicaDetalleLinea>('/toma_fisica-detalle', { id }),
+  ]);
+  return { cabecera, detalle };
 }
 
 // ------------------------------------------------------------

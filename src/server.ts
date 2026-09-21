@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { verificarTokenApex } from './http/verificarTokenApex';
-import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro, buscarRVU, buscarElementosFuncionario, buscarElementosDependencia } from './repositorios/actasRepo';
+import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro, buscarRVU, buscarTomaFisica, buscarElementosFuncionario, buscarElementosDependencia } from './repositorios/actasRepo';
 import { generarActaIngreso } from './pdf/generarActaIngreso';
 import { generarActaTraslado } from './pdf/generarActaTraslado';
 import { generarActaEgreso } from './pdf/generarActaEgreso';
@@ -9,6 +9,7 @@ import { generarActaDepreciacion } from './pdf/generarActaDepreciacion';
 import { generarActaComiteBaja } from './pdf/generarActaComiteBaja';
 import { generarActaDeterioro } from './pdf/generarActaDeterioro';
 import { generarActaRVU } from './pdf/generarActaRVU';
+import { generarActaTomaFisica } from './pdf/generarActaTomaFisica';
 import { generarReporteElementosFuncionario } from './pdf/generarReporteElementosFuncionario';
 import { generarReporteElementosDependencia } from './pdf/generarReporteElementosDependencia';
 
@@ -144,6 +145,23 @@ app.get('/actas/recalculo_vida_util/:id', verificarTokenApex, async (req: Reques
     res.send(pdf);
   } catch (err) {
     console.error('[actas/recalculo_vida_util] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// Ruta 'toma_fisica' -- mismo criterio de nombre sin abreviar que
+// 'comite_baja'/'recalculo_vida_util' (valor de negocio, calza con
+// LOWER(:P36_TIPO) cuando P36_TIPO='TOMA_FISICA' desde el boton nuevo
+// agregado en la Pagina 45/46, ver Objetos_BD_ACF.txt NOVENA ADICION).
+app.get('/actas/toma_fisica/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarTomaFisica(req.params.id);
+    const pdf = await generarActaTomaFisica(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="informe_toma_fisica_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/toma_fisica] error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });

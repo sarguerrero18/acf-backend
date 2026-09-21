@@ -217,6 +217,22 @@
 --    alla de FECHA_APROBACION (si tiene) -- se sigue el mismo patron de
 --    fechaDelEstado() ya usado (ELABORADO->fecha_creacion,
 --    APROBADO->fecha_aprobacion; Deterioro no tiene ANULADO).
+--
+-- NOVENA ADICION: informe (acta) de Toma Fisica (2026-09-21/22) --
+-- Toma Fisica NO tiene el ciclo ELABORADO/APROBADO/ANULADO de las
+-- otras actas (ACF_TF.ESTADO solo admite EN_PROCESO/CERRADA, sin
+-- contabilizacion). Firma: unicamente el almacenista ACTIVO de
+-- ACF_ALMACENISTA (mismo mecanismo que ingreso/traslado/egreso-
+-- cabecera, NO el patron ACF_FIRMANTE de Depreciacion/Comite/
+-- Deterioro/RVU) -- por eso toma_fisica-cabecera resuelve
+-- nombre_almacenista directo via LEFT JOIN, sin endpoint de firmantes
+-- aparte. toma_fisica-detalle incluye la columna nueva
+-- DEPENDENCIA_ENCONTRADA_ID (ACF_TF_DETALLE.DEPENDENCIA_ENCONTRADA_ID
+-- NUMBER(20), agregada por Sergio) -- campo opcional, sin regla de
+-- validacion (el concepto de "ubicacion" en este modulo -- estado
+-- categorico BODEGA/SERVICIO/MANTENIMIENTO/COMODATO/BAJA/PERDIDO/
+-- NO_EXPLOTADO -- es independiente de la dependencia, confirmado por
+-- Sergio: ver Objetos_BD_ACF.txt VERSION 102).
 -- ============================================================
 
 BEGIN
@@ -840,6 +856,79 @@ BEGIN
         AND F.ESTADO = 'ACTIVO'
         AND F.ROL IN ('CONTADOR','ALMACENISTA')
       ORDER BY F.ORDEN_FIRMA
+    ]'
+  );
+
+  ------------------------------------------------------------
+  -- TOMA FISICA (informe/acta, 2026-09-21/22) -- NOVENA ADICION, ver
+  -- header de este archivo. Sin endpoint de firmantes aparte (mismo
+  -- mecanismo que ingreso/traslado/egreso-cabecera): nombre_almacenista
+  -- se resuelve directo via LEFT JOIN a ACF_ALMACENISTA + GTH_FUNCIONARIOS
+  -- con ESTADO='ACTIVO', puede venir NULL si no hay ningun almacenista
+  -- ACTIVO configurado (el generador de PDF muestra "(sin asignar)").
+  -- toma_fisica-detalle: DEPENDENCIA_ENCONTRADA_ID es opcional, sin
+  -- regla de validacion (ver header -- corregido en Objetos_BD_ACF.txt
+  -- VERSION 102, el trigger ACF_TF_DET_BIU ya NO exige este campo).
+  ------------------------------------------------------------
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'toma_fisica-cabecera');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'toma_fisica-cabecera',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        T.ID AS id, T.CLIENTE_ID AS cliente_id, T.ENTIDAD_ID AS entidad_id,
+        T.CONSECUTIVO AS consecutivo, T.DESCRIPCION AS descripcion,
+        T.FECHA_INICIO AS fecha_inicio, T.FECHA_FIN AS fecha_fin,
+        T.ALCANCE_TIPO AS alcance_tipo,
+        T.DEP_RESPONSABLE_ID AS dep_responsable_id,
+        PK_GENERAL.fn_nombre_dependencia(T.DEP_RESPONSABLE_ID) AS nombre_dep_responsable,
+        T.BODEGA AS bodega, T.ESTADO AS estado,
+        T.FECHA_CIERRE AS fecha_cierre, T.USUARIO_CIERRE AS usuario_cierre,
+        T.OBSERVACIONES AS observaciones,
+        T.FECHA_CREACION AS fecha_creacion, T.USUARIO_CREACION AS usuario_creacion,
+        T.FECHA_MODIFICACION AS fecha_modificacion, T.USUARIO_MODIFICACION AS usuario_modificacion,
+        PK_GENERAL.fn_nombre_cliente(T.CLIENTE_ID) AS nombre_cliente,
+        PK_GENERAL.fn_nombre_entidad(T.ENTIDAD_ID) AS nombre_entidad,
+        GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
+        GE.LOGO_FILENAME AS logo_filename,
+        PK_GENERAL.fn_nombre_tercero(GF_ALM.FUNCIONARIO_ID) AS nombre_almacenista
+      FROM ACF_TF T
+      JOIN GEN_ENTIDAD GE ON GE.ID = T.ENTIDAD_ID
+      LEFT JOIN ACF_ALMACENISTA ALM ON ALM.CLIENTE_ID = T.CLIENTE_ID
+        AND ALM.ENTIDAD_ID = T.ENTIDAD_ID AND ALM.ESTADO = 'ACTIVO'
+      LEFT JOIN GTH_FUNCIONARIOS GF_ALM ON GF_ALM.ID = ALM.FUNCIONARIO_ID
+      WHERE T.ID = :id
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'toma_fisica-detalle');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'toma_fisica-detalle',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        AF.NUMERO_PLACA AS numero_placa, C.DESCRIPCION AS descripcion,
+        D.UBICACION_ESPERADA AS ubicacion_esperada,
+        D.UBICACION_ENCONTRADA AS ubicacion_encontrada,
+        D.ESTADO_ESPERADO AS estado_esperado,
+        D.ESTADO_ENCONTRADO AS estado_encontrado,
+        D.RESULTADO AS resultado,
+        PK_GENERAL.fn_nombre_dependencia(D.DEPENDENCIA_ESPERADA_ID) AS nombre_dependencia_esperada,
+        PK_GENERAL.fn_nombre_dependencia(D.DEPENDENCIA_ENCONTRADA_ID) AS nombre_dependencia_encontrada,
+        D.OBSERVACIONES AS observaciones
+      FROM ACF_TF_DETALLE D
+      JOIN ACF_ACTIVOS_FIJOS AF ON AF.ID = D.ACTIVO_FIJO_ID
+      JOIN ACF_CATALOGO C       ON C.ID = AF.CATALOGO_ID
+      WHERE D.TF_ID = :id
+      ORDER BY AF.NUMERO_PLACA
     ]'
   );
 
