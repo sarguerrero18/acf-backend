@@ -2,6 +2,35 @@
 -- Endpoints ORDS del modulo 'acf.actas' -- correr en SQL Workshop
 -- del esquema ACF, DESPUES de 01/02/03_ords_*.sql.
 --
+-- *** REGLA CRITICA, confirmada con datos reales (2026-09-08): este
+-- archivo debe ser SIEMPRE la copia COMPLETA Y UNICA de todo el modulo
+-- 'acf.actas' -- ORDS.DEFINE_MODULE, al llamarse sobre un modulo que
+-- YA EXISTE, borra TODOS sus templates/handlers previos antes de
+-- aplicar los DEFINE_TEMPLATE/DEFINE_HANDLER que sigan en el MISMO
+-- script (no esta documentado asi en ningun lado, se confirmo
+-- empiricamente: Sergio corrio este archivo -- entrega la Version 84
+-- de la actas, 18 endpoints, actas viejas funcionando -- y despues
+-- corrio por separado un archivo aparte migrations/
+-- 05_ords_reportes_elementos.sql con SOLO los 4 endpoints de
+-- Elementos Asignados (Paginas 42/43); ese segundo script, con su
+-- propio ORDS.DEFINE_MODULE, borro los 18 endpoints que este archivo
+-- acababa de crear, dejando SOLO los 4 nuevos -- rompiendo la
+-- impresion de TODAS las actas de un dia para otro).
+--
+-- Por eso, cualquier endpoint nuevo de /actas/* (nueva acta, nuevo
+-- reporte) se agrega DIRECTO en este archivo (antes del COMMIT final),
+-- NUNCA en un migrations/0N_ords_*.sql aparte -- migrations/
+-- 05_ords_reportes_elementos.sql queda MARCADO COMO NO USAR (ver su
+-- propio header) y su contenido ya esta fusionado aca abajo, en la
+-- seccion "ELEMENTOS ASIGNADOS A FUNCIONARIO/DEPENDENCIA". Repetir
+-- SIEMPRE este archivo completo (los 18 endpoints originales + lo que
+-- se agregue) es justamente lo que ya veniamos haciendo sin darnos
+-- cuenta desde el principio -- cada acta nueva (Traslado, Egreso,
+-- Depreciacion, Comite de Bajas, Deterioro, RVU) se agrego SIEMPRE
+-- editando este mismo archivo y volviendo a correrlo entero, nunca en
+-- un script separado -- migrations/05 fue la primera vez que se rompio
+-- ese patron, y por eso fue la primera vez que paso esto.
+--
 -- Cabecera + detalle para las 4 actas (Ingreso, Traslado, Egreso,
 -- Depreciacion) + un endpoint barato de salud usado por
 -- src/http/verificarTokenApex.ts (acf-backend) para validar el
@@ -811,6 +840,135 @@ BEGIN
         AND F.ESTADO = 'ACTIVO'
         AND F.ROL IN ('CONTADOR','ALMACENISTA')
       ORDER BY F.ORDEN_FIRMA
+    ]'
+  );
+
+  ------------------------------------------------------------
+  -- ELEMENTOS ASIGNADOS A FUNCIONARIO/DEPENDENCIA (Paginas 42/43,
+  -- 2026-09-08) -- fusionado aca desde migrations/
+  -- 05_ords_reportes_elementos.sql (ver *** REGLA CRITICA en el header
+  -- de este archivo -- ese script aparte causo que ORDS.DEFINE_MODULE
+  -- borrara los 18 endpoints de arriba; no se debe volver a correr por
+  -- separado).
+  --
+  -- A diferencia de las 7 actas de arriba, no hay tabla de cabecera
+  -- propia (no existe "ACF_REPORTE_ELEMENTOS" ni similar) -- son un
+  -- filtro sobre ACF_ACTIVOS_FIJOS por FUNCIONARIO_RESPONSABLE_ID o
+  -- DEP_RESPONSABLE_ID (cualquier UBICACION con responsable registrado,
+  -- salvo 'BAJA' -- mismo alcance ya confirmado por Sergio para las
+  -- Paginas 42/43). Como :id es el ID de GTH_FUNCIONARIOS o de
+  -- GEN_DEPENDENCIA (no el de un documento ACF propio), CLIENTE_ID/
+  -- ENTIDAD_ID se derivan del primer activo encontrado en
+  -- ACF_ACTIVOS_FIJOS para ese funcionario/dependencia. *** SUPUESTO A
+  -- VALIDAR: si el funcionario/dependencia no tiene NINGUN activo
+  -- asignado, *-cabecera no resuelve fila -- no deberia pasar en la
+  -- practica (Sergio solo imprime despues de ver filas en pantalla).
+  ------------------------------------------------------------
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'elementos_funcionario-cabecera');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'elementos_funcionario-cabecera',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        GF.ID AS funcionario_id,
+        PK_GENERAL.fn_nombre_tercero(GF.FUNCIONARIO_ID) AS nombre_funcionario,
+        PK_GENERAL.fn_nombre_dependencia(GF.DEPENDENCIA_ID) AS nombre_dependencia_funcionario,
+        X.CLIENTE_ID AS cliente_id, X.ENTIDAD_ID AS entidad_id,
+        PK_GENERAL.fn_nombre_cliente(X.CLIENTE_ID) AS nombre_cliente,
+        PK_GENERAL.fn_nombre_entidad(X.ENTIDAD_ID) AS nombre_entidad,
+        GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
+        GE.LOGO_FILENAME AS logo_filename
+      FROM GTH_FUNCIONARIOS GF
+      JOIN (
+        SELECT CLIENTE_ID, ENTIDAD_ID FROM ACF_ACTIVOS_FIJOS
+         WHERE FUNCIONARIO_RESPONSABLE_ID = :id AND UBICACION != 'BAJA' AND ROWNUM = 1
+      ) X ON 1 = 1
+      JOIN GEN_ENTIDAD GE ON GE.ID = X.ENTIDAD_ID
+      WHERE GF.ID = :id
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'elementos_funcionario-detalle');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'elementos_funcionario-detalle',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        AF.NUMERO_PLACA AS numero_placa,
+        C.DESCRIPCION AS descripcion,
+        (
+          SELECT MAX(K.FECHA_MOVIMIENTO)
+            FROM ACF_V_KARDEX_ACTIVOS K
+           WHERE K.ACTIVO_FIJO_ID = AF.ID
+             AND K.CLASE_MOVIMIENTO IN ('INGRESO','TRASLADO')
+        ) AS fecha_asignacion,
+        PK_GENERAL.fn_nombre_dependencia(AF.DEP_RESPONSABLE_ID) AS nombre_dependencia
+      FROM ACF_ACTIVOS_FIJOS AF
+      JOIN ACF_CATALOGO C ON C.ID = AF.CATALOGO_ID
+      WHERE AF.FUNCIONARIO_RESPONSABLE_ID = :id
+        AND AF.UBICACION != 'BAJA'
+      ORDER BY AF.NUMERO_PLACA
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'elementos_dependencia-cabecera');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'elementos_dependencia-cabecera',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        :id AS dependencia_id,
+        PK_GENERAL.fn_nombre_dependencia(:id) AS nombre_dependencia,
+        X.CLIENTE_ID AS cliente_id, X.ENTIDAD_ID AS entidad_id,
+        PK_GENERAL.fn_nombre_cliente(X.CLIENTE_ID) AS nombre_cliente,
+        PK_GENERAL.fn_nombre_entidad(X.ENTIDAD_ID) AS nombre_entidad,
+        GE.LOGO_ENTIDAD AS logo_entidad, GE.LOGO_MIME_TYPE AS logo_mime_type,
+        GE.LOGO_FILENAME AS logo_filename
+      FROM (
+        SELECT CLIENTE_ID, ENTIDAD_ID FROM ACF_ACTIVOS_FIJOS
+         WHERE DEP_RESPONSABLE_ID = :id AND UBICACION != 'BAJA' AND ROWNUM = 1
+      ) X
+      JOIN GEN_ENTIDAD GE ON GE.ID = X.ENTIDAD_ID
+    ]'
+  );
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'acf.actas', p_pattern => 'elementos_dependencia-detalle');
+
+  ORDS.DEFINE_HANDLER(
+    p_module_name    => 'acf.actas',
+    p_pattern        => 'elementos_dependencia-detalle',
+    p_method         => 'GET',
+    p_source_type    => ORDS.source_type_query,
+    p_items_per_page => 0,
+    p_source         => q'[
+      SELECT
+        AF.NUMERO_PLACA AS numero_placa,
+        C.DESCRIPCION AS descripcion,
+        (
+          SELECT MAX(K.FECHA_MOVIMIENTO)
+            FROM ACF_V_KARDEX_ACTIVOS K
+           WHERE K.ACTIVO_FIJO_ID = AF.ID
+             AND K.CLASE_MOVIMIENTO IN ('INGRESO','TRASLADO')
+        ) AS fecha_asignacion,
+        PK_GENERAL.fn_nombre_tercero(GF.FUNCIONARIO_ID) AS nombre_funcionario
+      FROM ACF_ACTIVOS_FIJOS AF
+      JOIN ACF_CATALOGO C ON C.ID = AF.CATALOGO_ID
+      LEFT JOIN GTH_FUNCIONARIOS GF ON GF.ID = AF.FUNCIONARIO_RESPONSABLE_ID
+      WHERE AF.DEP_RESPONSABLE_ID = :id
+        AND AF.UBICACION != 'BAJA'
+      ORDER BY AF.NUMERO_PLACA
     ]'
   );
 

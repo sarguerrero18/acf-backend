@@ -1,4 +1,30 @@
 -- ============================================================
+-- *** NO EJECUTAR ESTE ARCHIVO *** -- DEPRECADO (2026-09-08)
+--
+-- Se confirmo en produccion que ORDS.DEFINE_MODULE, al llamarse sobre
+-- un modulo YA EXISTENTE (como 'acf.actas', creado por
+-- 04_ords_actas.sql), BORRA todos los DEFINE_TEMPLATE/DEFINE_HANDLER
+-- que ese modulo ya tenia, ANTES de aplicar los nuevos del script que
+-- lo llama. Este archivo llama DEFINE_MODULE, asi que correrlo DESPUES
+-- de 04_ords_actas.sql borra los otros 18 endpoints (todas las actas
+-- viejas dejan de imprimir), dejando solo los 4 de este archivo.
+--
+-- Los 4 endpoints de aca (elementos_funcionario/dependencia
+-- cabecera+detalle) YA FUERON FUSIONADOS dentro de 04_ords_actas.sql
+-- (seccion "ELEMENTOS ASIGNADOS A FUNCIONARIO/DEPENDENCIA", justo antes
+-- del COMMIT final). De ahora en adelante 04_ords_actas.sql es el
+-- UNICO archivo que se debe correr para el modulo 'acf.actas' completo
+-- (18 + 4 = 22 endpoints, mas health-check = 23 templates/handlers).
+--
+-- Este archivo se conserva solo como referencia historica de como se
+-- redactaron originalmente estos 4 endpoints. Ver Objetos_BD_ACF.txt,
+-- seccion "CORRECCION CRITICA - ORDS.DEFINE_MODULE borra el modulo
+-- (2026-09-08)" para el detalle completo del diagnostico.
+-- ============================================================
+
+-- ============================================================
+-- (Contenido original, solo de referencia -- NO CORRER)
+-- ------------------------------------------------------------
 -- Endpoints ORDS para los Reportes de Elementos Asignados (Paginas
 -- 42/43, ver Objetos_BD_ACF.txt "PAGINAS 42/43" y "CORRECCION PAGINAS
 -- 42/43") -- correr en SQL Workshop del esquema ACF, DESPUES de
