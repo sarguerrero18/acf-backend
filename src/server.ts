@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { verificarTokenApex } from './http/verificarTokenApex';
 import { buscarIngreso, buscarTraslado, buscarEgreso, buscarDepreciacion, buscarComiteBaja, buscarDeterioro, buscarRVU, buscarTomaFisica, buscarElementosFuncionario, buscarElementosDependencia } from './repositorios/actasRepo';
+import { buscarAlmIngreso, buscarAlmEgreso, buscarAlmTraslado, buscarAlmDevolucion } from './repositorios/almActasRepo';
 import { generarActaIngreso } from './pdf/generarActaIngreso';
 import { generarActaTraslado } from './pdf/generarActaTraslado';
 import { generarActaEgreso } from './pdf/generarActaEgreso';
@@ -12,6 +13,10 @@ import { generarActaRVU } from './pdf/generarActaRVU';
 import { generarActaTomaFisica } from './pdf/generarActaTomaFisica';
 import { generarReporteElementosFuncionario } from './pdf/generarReporteElementosFuncionario';
 import { generarReporteElementosDependencia } from './pdf/generarReporteElementosDependencia';
+import { generarActaAlmIngreso } from './pdf/generarActaAlmIngreso';
+import { generarActaAlmEgreso } from './pdf/generarActaAlmEgreso';
+import { generarActaAlmTraslado } from './pdf/generarActaAlmTraslado';
+import { generarActaAlmDevolucion } from './pdf/generarActaAlmDevolucion';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
@@ -77,6 +82,70 @@ app.get('/actas/egreso/:id', verificarTokenApex, async (req: Request, res: Respo
     res.send(pdf);
   } catch (err) {
     console.error('[actas/egreso] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ------------------------------------------------------------
+// Actas del modulo ALM (Almacen / Application 107) -- agregado
+// 2026-09-23. Sergio clono la Pagina 36 de ACF (proxy de descarga) en
+// ALM con el mismo numero de pagina; ese proxy arma la ruta como
+// 'actas/' || LOWER(:P36_TIPO) || '/' || :P36_ID, asi que P36_TIPO en
+// ALM debe valer 'ALM_INGRESO'/'ALM_EGRESO'/'ALM_TRASLADO'/
+// 'ALM_DEVOLUCION' (sin abreviar, mismo criterio que 'comite_baja'/
+// 'recalculo_vida_util' en las rutas de ACF de arriba) para calzar con
+// estos 4 nombres de ruta. Ver migrations/04_ords_actas.sql (seccion
+// "ALM INGRESO/EGRESO/TRASLADO/DEVOLUCION") para los handlers ORDS que
+// alimentan a buscarAlm*.
+// ------------------------------------------------------------
+app.get('/actas/alm_ingreso/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarAlmIngreso(req.params.id);
+    const pdf = await generarActaAlmIngreso(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acta_alm_ingreso_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/alm_ingreso] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/actas/alm_egreso/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarAlmEgreso(req.params.id);
+    const pdf = await generarActaAlmEgreso(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acta_alm_egreso_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/alm_egreso] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/actas/alm_traslado/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarAlmTraslado(req.params.id);
+    const pdf = await generarActaAlmTraslado(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acta_alm_traslado_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/alm_traslado] error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/actas/alm_devolucion/:id', verificarTokenApex, async (req: Request, res: Response) => {
+  try {
+    const { cabecera, detalle } = await buscarAlmDevolucion(req.params.id);
+    const pdf = await generarActaAlmDevolucion(cabecera, detalle, usuarioDeQuery(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="acta_alm_devolucion_${cabecera.consecutivo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error('[actas/alm_devolucion] error:', err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
